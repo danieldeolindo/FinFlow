@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>FinFlow — Gerenciador Financeiro</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="stylesheet" href="finflow.css">
+</head>
+<body>
+<!-- ═══════════════════ LOGIN ═══════════════════════════ -->
+<div id="loginScreen">
+  <div class="lbox">
+    <div class="llogo">
+      <div class="llogo-mark">FinFlow</div>
+      <div class="llogo-sub">Gestão Financeira</div>
+    </div>
+    <div class="ltabs">
+      <div class="ltab active" onclick="swLoginTab('login',this)">Entrar</div>
+      <div class="ltab" onclick="swLoginTab('register',this)">Criar conta</div>
+    </div>
+    <!-- login -->
+    <div class="lform active" id="lf-login">
+      <div class="fg"><label class="flabel">E-mail</label><input type="email" class="fc" id="li-email" placeholder="seu@email.com"></div>
+      <div class="fg"><label class="flabel">Senha</label><input type="password" class="fc" id="li-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
+      <button class="lbtn" onclick="doLogin()">Entrar</button>
+      <div class="lerr" id="li-err"></div>
+    </div>
+    <!-- register -->
+    <div class="lform" id="lf-register">
+      <div class="fg"><label class="flabel">Nome</label><input type="text" class="fc" id="re-name" placeholder="Seu nome"></div>
+      <div class="fg"><label class="flabel">E-mail</label><input type="email" class="fc" id="re-email" placeholder="seu@email.com"></div>
+      <div class="fg"><label class="flabel">Senha</label><input type="password" class="fc" id="re-pass" placeholder="Mínimo 6 caracteres"></div>
+      <div class="fg"><label class="flabel">Confirmar senha</label><input type="password" class="fc" id="re-pass2" placeholder="Repita a senha" onkeydown="if(event.key==='Enter')doRegister()"></div>
+      <button class="lbtn" onclick="doRegister()">Criar conta</button>
+      <div class="lerr" id="re-err"></div>
+    </div>
+    <div class="ltheme" onclick="toggleTheme()"><span id="ltheme-lbl">🌙 Modo escuro</span></div>
+    <div class="lfoot">Dados salvos no seu dispositivo</div>
+  </div>
+</div>
+
+<!-- ═══════════════════ APP ═════════════════════════════ -->
+<div class="obg" id="obg" onclick="closeSB()"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="slogo">
+    <div class="slogo-mark">FinFlow</div>
+    <div class="slogo-sub">Gestão Financeira</div>
+  </div>
+  <nav class="snav">
+    <div class="nsect">
+      <div class="nlabel">Menu</div>
+      <div class="nitem active" onclick="goTab('lancamentos',this)"><span class="nicon">📋</span>Lançamentos</div>
+      <div class="nitem" onclick="goTab('dashboard',this)"><span class="nicon">📊</span>Dashboard</div>
+      <div class="nitem" onclick="goTab('investimentos',this)"><span class="nicon">📈</span>Investimentos</div>
+      <div class="nitem" onclick="goTab('metas',this)"><span class="nicon">🎯</span>Metas</div>
+      <div class="nitem" onclick="goTab('score',this)"><span class="nicon">⭐</span>Score</div>
+    </div>
+    <div class="nsect">
+      <div class="nlabel">Ferramentas</div>
+      <div class="nitem" onclick="openExport()"><span class="nicon">📤</span>Exportar</div>
+    </div>
+  </nav>
+  <div class="sfooter">
+    <div class="theme-row" onclick="toggleTheme()">
+      <span>🌙 Modo escuro</span>
+      <div class="tswitch" id="tsw"></div>
+    </div>
+    <div class="utag" onclick="doLogout()">
+      <div class="uavatar" id="uavatar">?</div>
+      <span class="uname" id="uname">Sair</span>
+    </div>
+  </div>
+</aside>
+
+<main class="main" id="appMain" style="display:none">
+  <header class="topbar">
+    <div style="display:flex;align-items:center;gap:9px;min-width:0">
+      <button class="mbtn" onclick="openSB()">☰</button>
+      <div class="ptitle" id="ptitle">Lançamentos</div>
+    </div>
+    <div class="tactions">
+      <button class="btn btn-ghost btn-sm" onclick="openExport()">📤 Exportar</button>
+      <button class="btn btn-primary btn-sm" id="topAddBtn" onclick="openModal()">+ Novo gasto</button>
+    </div>
+  </header>
+
+  <div class="content">
+
+    <!-- ─── LANÇAMENTOS ─────────────────────────────────── -->
+    <div class="tab-view active" id="tab-lancamentos">
+      <div id="al-overdue" style="display:none"></div>
+      <div id="al-goal" style="display:none"></div>
+      <div class="fbar">
+        <div class="swrap">
+          <span class="sico">🔍</span>
+          <input type="text" class="fc sinput" id="srch" placeholder="Buscar por nome..." oninput="renderTable()" aria-label="Buscar lançamentos">
+        </div>
+        <select class="fc" id="fCat" onchange="renderTable()"><option value="">Categorias</option></select>
+        <select class="fc" id="fStatus" onchange="renderTable()">
+          <option value="">Status</option>
+          <option value="pending">Pendente</option>
+          <option value="overdue">Vencido</option>
+          <option value="paid">Pago</option>
+        </select>
+        <select class="fc" id="fSort" onchange="renderTable()">
+          <option value="">Ordenar</option>
+          <option value="val-d">Valor: maior→menor</option>
+          <option value="val-a">Valor: menor→maior</option>
+          <option value="due-a">Venc: próximo</option>
+          <option value="due-d">Venc: distante</option>
+        </select>
+      </div>
+      <!-- Barra de meses -->
+      <div class="mbar-wrap">
+        <div class="mbar-year" id="mbar-year"></div>
+        <div class="mbar" id="mbar" role="tablist" aria-label="Filtro por mês"></div>
+      </div>
+      <div class="card">
+        <div class="twrap">
+          <table class="dtable">
+            <thead>
+              <tr>
+                <th onclick="sortBy('name')">Nome ↕</th>
+                <th>Cat.</th>
+                <th onclick="sortBy('amount')">Valor ↕</th>
+                <th onclick="sortBy('due')">Vencimento ↕</th>
+                <th>Status</th>
+                <th>Opções</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+          <div id="empty-exp" class="empty" style="display:none">
+            <div class="empty-ico">💸</div>
+            <div class="empty-title">Nenhum lançamento</div>
+            <div style="font-size:12px">Clique em "+ Novo gasto" para começar</div>
+          </div>
+        </div>
+        <!-- Mobile card list (visível apenas em telas pequenas) -->
+        <div class="mcard-list" id="mcard-exp"></div>
+      </div>
+    </div>
+
+    <!-- ─── DASHBOARD ────────────────────────────────────── -->
+    <div class="tab-view" id="tab-dashboard">
+      <div class="ppills">
+        <button class="ppill active" onclick="setPeriod('month',this)">Este mês</button>
+        <button class="ppill" onclick="setPeriod('7',this)">7 dias</button>
+        <button class="ppill" onclick="setPeriod('30',this)">30 dias</button>
+        <button class="ppill" onclick="setPeriod('all',this)">Tudo</button>
+      </div>
+      <div class="sgrid" id="sgrid"></div>
+      <div class="cgrid">
+        <!-- salary gauge full width -->
+        <div class="card gauge-wrap cfull" id="salaryGaugeCard">
+          <div class="ctitle" style="width:100%;justify-content:center;flex-direction:column;align-items:center;gap:10px">
+            <span>💰 Comprometimento do Salário</span>
+            <div class="gauge-selector">
+              <button class="gpill active" onclick="setGaugeType('ring',this)">⬤ Gauge</button>
+              <button class="gpill" onclick="setGaugeType('bar',this)">▬ Barra</button>
+              <button class="gpill" onclick="setGaugeType('pie',this)">🥧 Pizza</button>
+            </div>
+          </div>
+          <div id="gaugeContent" style="width:100%;max-width:360px"></div>
+          <div id="gaugePieWrap" style="display:none;width:100%;max-width:280px;height:220px;position:relative"><canvas id="gaugePieCanvas"></canvas></div>
+        </div>
+        <div class="card cwrap cfull">
+          <div class="ctitle">📈 Evolução acumulada</div>
+          <div class="ccanvas"><canvas id="lineChart"></canvas></div>
+        </div>
+        <div class="card cwrap">
+          <div class="ctitle">📊 Por categoria</div>
+          <div class="ccanvas"><canvas id="barChart"></canvas></div>
+        </div>
+        <div class="card cwrap">
+          <div class="ctitle">📊 Distribuição %</div>
+          <div class="ccanvas"><canvas id="pieChart"></canvas></div>
+        </div>
+        <div class="card cwrap cfull">
+          <div class="ctitle">📊 Gastos vs Investimentos</div>
+          <div class="ccanvas"><canvas id="compChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── INVESTIMENTOS ────────────────────────────────── -->
+    <div class="tab-view" id="tab-investimentos">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+        <button class="btn btn-primary btn-sm" onclick="openInvModal()">+ Novo investimento</button>
+      </div>
+      <!-- summary cards -->
+      <div class="sgrid" id="inv-sgrid" style="margin-bottom:16px"></div>
+      <div class="cgrid" style="margin-bottom:16px">
+        <div class="card cwrap">
+          <div class="ctitle">📊 Por tipo</div>
+          <div class="ccanvas"><canvas id="invPieChart"></canvas></div>
+        </div>
+        <div class="card cwrap">
+          <div class="ctitle">📈 Rentabilidade por ativo</div>
+          <div class="ccanvas"><canvas id="invBarChart"></canvas></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="twrap">
+          <table class="dtable">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Tipo</th>
+                <th>Valor Invest.</th>
+                <th>Rentab. %</th>
+                <th>Valor Atual</th>
+                <th>Data</th>
+                <th>Opções</th>
+              </tr>
+            </thead>
+            <tbody id="inv-tbody"></tbody>
+          </table>
+          <div id="empty-inv" class="empty" style="display:none">
+            <div class="empty-ico">📈</div>
+            <div class="empty-title">Nenhum investimento</div>
+            <div style="font-size:12px">Clique em "+ Novo investimento" para adicionar</div>
+          </div>
+        </div>
+        <!-- Mobile card list (visível apenas em telas pequenas) -->
+        <div class="mcard-list" id="mcard-inv"></div>
+      </div>
+    </div>
+
+    <!-- ─── METAS ────────────────────────────────────────── -->
+    <div class="tab-view" id="tab-metas">
+      <div class="card cb" style="margin-bottom:14px">
+        <div style="font-family:'DM Serif Display',serif;font-size:17px;margin-bottom:16px">🎯 Configurar Metas</div>
+        <div class="fgrid" style="margin-bottom:16px">
+          <div class="fg">
+            <label class="flabel">Salário mensal (R$)</label>
+            <input type="number" class="fc" id="salaryInput" placeholder="ex: 5000" oninput="saveMeta()">
+          </div>
+          <div class="fg">
+            <label class="flabel">Meta de gastos (R$)</label>
+            <input type="number" class="fc" id="goalInput" placeholder="ex: 3000" oninput="saveMeta()">
+          </div>
+          <div class="fg">
+            <label class="flabel">Meta de poupança (%)</label>
+            <input type="number" class="fc" id="saveGoalInput" placeholder="ex: 20" min="0" max="100" oninput="saveMeta()">
+          </div>
+        </div>
+        <div id="metaProgress"></div>
+      </div>
+      <div class="card cb">
+        <div style="font-family:'DM Serif Display',serif;font-size:17px;margin-bottom:14px">💡 Insights do mês</div>
+        <div id="insights"></div>
+      </div>
+    </div>
+
+    <!-- ─── SCORE ────────────────────────────────────────── -->
+    <div class="tab-view" id="tab-score">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">
+        <div class="card cb" style="text-align:center">
+          <div style="font-size:13px;font-weight:600;margin-bottom:14px">⭐ Score Financeiro</div>
+          <div class="score-ring">
+            <svg width="100" height="100" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="42" fill="none" stroke="var(--border)" stroke-width="10"/>
+              <circle id="scoreCircle" cx="50" cy="50" r="42" fill="none" stroke="var(--accent)" stroke-width="10" stroke-dasharray="264" stroke-dashoffset="264" stroke-linecap="round"/>
+            </svg>
+            <div class="score-num" id="scoreNum">--</div>
+          </div>
+          <div class="score-lbl" id="scoreLbl">Calculando...</div>
+        </div>
+        <div class="card cb"><div style="font-size:13px;font-weight:600;margin-bottom:12px">📋 Componentes</div><div id="scoreComp"></div></div>
+        <div class="card cb"><div style="font-size:13px;font-weight:600;margin-bottom:12px">💬 Recomendações</div><div id="scoreRecs"></div></div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</main>
+
+<!-- ═══ MODAL EXPENSE ═══════════════════════════════════ -->
+<div class="mov" id="mov-exp">
+  <div class="modal">
+    <div class="mtitle" id="mexp-title">Novo Lançamento</div>
+    <div style="display:flex;flex-direction:column;gap:13px">
+      <div class="fg">
+        <label class="flabel">Nome do gasto</label>
+        <input type="text" class="fc" id="inp-name" placeholder="ex: Conta de luz" oninput="onNameInput()">
+        <div id="cat-sugg"></div>
+      </div>
+      <div class="fgrid" style="gap:13px">
+        <div class="fg">
+          <label class="flabel">Categoria</label>
+          <select class="fc" id="inp-cat"></select>
+        </div>
+        <div class="fg">
+          <label class="flabel">Cor do lançamento</label>
+          <input type="color" class="fc" id="inp-color" value="#2d6a4f">
+        </div>
+      </div>
+      <div class="fgrid" style="gap:13px">
+        <div class="fg">
+          <label class="flabel">Valor (R$)</label>
+          <input type="number" class="fc" id="inp-val" placeholder="0,00" min="0" step="0.01">
+        </div>
+        <div class="fg">
+          <label class="flabel">Vencimento</label>
+          <input type="date" class="fc" id="inp-due">
+        </div>
+      </div>
+      <div class="fg">
+        <label class="flabel">Recorrência</label>
+        <select class="fc" id="inp-rec" onchange="onRecChange()">
+          <option value="nenhuma">📅 Não recorrente — aparece só no mês cadastrado</option>
+          <option value="infinita">🔁 Recorrente mensal — aparece a partir deste mês</option>
+          <option value="parcelada">📦 Parcelado por X meses</option>
+        </select>
+      </div>
+      <div class="fg" id="fg-parcelas" style="display:none">
+        <label class="flabel">Número de parcelas (meses)</label>
+        <input type="number" class="fc" id="inp-parcelas" placeholder="ex: 6" min="2" max="360" step="1">
+      </div>
+    </div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeModal('mov-exp')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveExpense()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL INVESTMENT ════════════════════════════════ -->
+<div class="mov" id="mov-inv">
+  <div class="modal">
+    <div class="mtitle" id="minv-title">Novo Investimento</div>
+    <div style="display:flex;flex-direction:column;gap:13px">
+      <div class="fgrid" style="gap:13px">
+        <div class="fg">
+          <label class="flabel">Nome</label>
+          <input type="text" class="fc" id="inv-name" placeholder="ex: Tesouro Direto">
+        </div>
+        <div class="fg">
+          <label class="flabel">Tipo</label>
+          <select class="fc" id="inv-type">
+            <option value="rf">Renda Fixa</option>
+            <option value="rv">Renda Variável</option>
+            <option value="crypto">Cripto</option>
+            <option value="other">Outro</option>
+          </select>
+        </div>
+      </div>
+      <div class="fgrid" style="gap:13px">
+        <div class="fg">
+          <label class="flabel">Valor investido (R$)</label>
+          <input type="number" class="fc" id="inv-val" placeholder="0,00" min="0" step="0.01">
+        </div>
+        <div class="fg">
+          <label class="flabel">Rentabilidade (%/ano)</label>
+          <input type="number" class="fc" id="inv-rent" placeholder="ex: 12.5" step="0.01">
+        </div>
+      </div>
+      <div class="fgrid" style="gap:13px">
+        <div class="fg">
+          <label class="flabel">Data</label>
+          <input type="date" class="fc" id="inv-date">
+        </div>
+        <div class="fg">
+          <label class="flabel">Cor do investimento</label>
+          <input type="color" class="fc" id="inv-color" value="#2563eb">
+        </div>
+      </div>
+    </div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeModal('mov-inv')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveInvestment()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL CATEGORY ══════════════════════════════════ -->
+<div class="mov" id="mov-cat">
+  <div class="modal" style="max-width:360px">
+    <div class="mtitle">Nova Categoria</div>
+    <div class="fg"><label class="flabel">Nome</label><input type="text" class="fc" id="new-cat" placeholder="ex: Educação" onkeydown="if(event.key==='Enter')addCat()"></div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeModal('mov-cat')">Cancelar</button>
+      <button class="btn btn-primary" onclick="addCat()">Criar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL EXPORT ════════════════════════════════════ -->
+<div class="mov" id="mov-exp-modal">
+  <div class="modal" style="max-width:360px">
+    <div class="mtitle">📤 Exportar Dados</div>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:18px">Escolha o formato:</p>
+    <div style="display:flex;gap:9px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="exportCSV()">📄 CSV</button>
+      <button class="btn btn-ghost" onclick="exportJSON()">📋 JSON</button>
+    </div>
+    <div class="mactions"><button class="btn btn-ghost" onclick="closeModal('mov-exp-modal')">Fechar</button></div>
+  </div>
+</div>
+
+<script src="finflow.js"></script>
+</body>
+</html>
