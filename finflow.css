@@ -332,3 +332,8 @@ input[type=color].fc{padding:4px 8px;height:40px;cursor:pointer}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+/* ── Password visibility toggle ──────────────────────────── */
+.pass-wrap{position:relative;display:flex;align-items:center}
+.pass-wrap .fc{flex:1;padding-right:40px}
+.pass-eye{position:absolute;right:10px;background:none;border:none;cursor:pointer;font-size:16px;padding:0;line-height:1;opacity:.6;transition:opacity var(--t)}
+.pass-eye:hover{opacity:1}

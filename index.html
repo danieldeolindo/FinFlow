@@ -23,7 +23,7 @@
     <!-- login -->
     <div class="lform active" id="lf-login">
       <div class="fg"><label class="flabel">E-mail</label><input type="email" class="fc" id="li-email" placeholder="seu@email.com"></div>
-      <div class="fg"><label class="flabel">Senha</label><input type="password" class="fc" id="li-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
+      <div class="fg"><label class="flabel">Senha</label><div class="pass-wrap"><input type="password" class="fc" id="li-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"><button type="button" class="pass-eye" onclick="togglePass('li-pass',this)" aria-label="Mostrar senha">👁️</button></div></div>
       <button class="lbtn" onclick="doLogin()">Entrar</button>
       <div class="lerr" id="li-err"></div>
     </div>
@@ -31,13 +31,13 @@
     <div class="lform" id="lf-register">
       <div class="fg"><label class="flabel">Nome</label><input type="text" class="fc" id="re-name" placeholder="Seu nome"></div>
       <div class="fg"><label class="flabel">E-mail</label><input type="email" class="fc" id="re-email" placeholder="seu@email.com"></div>
-      <div class="fg"><label class="flabel">Senha</label><input type="password" class="fc" id="re-pass" placeholder="Mínimo 6 caracteres"></div>
-      <div class="fg"><label class="flabel">Confirmar senha</label><input type="password" class="fc" id="re-pass2" placeholder="Repita a senha" onkeydown="if(event.key==='Enter')doRegister()"></div>
+      <div class="fg"><label class="flabel">Senha</label><div class="pass-wrap"><input type="password" class="fc" id="re-pass" placeholder="Mínimo 6 caracteres"><button type="button" class="pass-eye" onclick="togglePass('re-pass',this)" aria-label="Mostrar senha">👁️</button></div></div>
+      <div class="fg"><label class="flabel">Confirmar senha</label><div class="pass-wrap"><input type="password" class="fc" id="re-pass2" placeholder="Repita a senha" onkeydown="if(event.key==='Enter')doRegister()"><button type="button" class="pass-eye" onclick="togglePass('re-pass2',this)" aria-label="Mostrar senha">👁️</button></div></div>
       <button class="lbtn" onclick="doRegister()">Criar conta</button>
       <div class="lerr" id="re-err"></div>
     </div>
     <div class="ltheme" onclick="toggleTheme()"><span id="ltheme-lbl">🌙 Modo escuro</span></div>
-    <div class="lfoot">Dados salvos no seu dispositivo</div>
+    <div class="lfoot">Dados salvos na nuvem com Firebase</div>
   </div>
 </div>
 
@@ -401,6 +401,6 @@
   </div>
 </div>
 
-<script src="finflow.js"></script>
+<script type="module" src="finflow.js"></script>
 </body>
 </html>
