@@ -266,22 +266,44 @@ function currentYM() {
 function getInstancia(e, ym) {
   // Resolve dados do lançamento para uma competência específica
   const mod = (e.modificacoes||{})[ym];
+  const tipo = e.recorrenciaTipo||(e.recorrente||e.isTemplate||e.recurrence==='monthly'?'infinita':'nenhuma');
+  const isRecorrente = tipo === 'infinita' || tipo === 'parcelada';
+
+  // ── Vencimento da instância ────────────────────────────────
+  // Para recorrentes: usa o DIA original mas o MÊS/ANO da competência exibida.
+  // Isso evita que meses futuros sejam marcados como atrasados com base na data de criação.
+  let instDueDate = e.dueDate || '';
+  if(isRecorrente && instDueDate){
+    const [ymYear, ymMonth] = ym.split('-').map(Number);
+    const diaOriginal = new Date(instDueDate + 'T00:00:00').getDate();
+    // Cria data da instância: dia fixo + mês/ano da competência
+    const d = new Date(ymYear, ymMonth - 1, diaOriginal);
+    // Protege contra overflow de mês (ex: dia 31 em mês de 30 dias → usa último dia)
+    if(d.getMonth() !== ymMonth - 1) d.setDate(0);
+    instDueDate = d.toISOString().split('T')[0];
+  }
+
   return {
     ...e,
-    name:     mod?.nome   ?? e.name,
-    amount:   mod?.valor  ?? e.amount,
-    category: mod?.categoria ?? e.category,
-    _ym: ym,
-    _isPaid: !!((e.pagamentos||{})[ym]),
+    name:        mod?.nome      ?? e.name,
+    amount:      mod?.valor     ?? e.amount,
+    category:    mod?.categoria ?? e.category,
+    _ym:         ym,
+    _dueDate:    instDueDate,   // vencimento calculado para esta competência
+    _isPaid:     !!((e.pagamentos||{})[ym]),
     _hasException: !!((e.excecoes||{})[ym]),
   };
 }
+
 function status(e, ym){
-  // Suporta tanto o modo legado (campo paid) quanto o novo (pagamentos[ym])
-  const pago = ym ? !!((e.pagamentos||{})[ym]) : !!e.paid || !!e._isPaid;
+  // Suporta modo legado (campo paid) e novo (pagamentos[ym])
+  const pago = ym
+    ? !!((e.pagamentos||{})[ym])
+    : !!(e.paid || e._isPaid);
   if(pago) return 'paid';
-  // Para renderização na tabela, e._ym já vem preenchido via getInstancia
-  const venc = e.dueDate||'';
+
+  // Usa _dueDate (vencimento da instância) se disponível, senão dueDate base
+  const venc = e._dueDate || e.dueDate || '';
   if(!venc) return 'pending';
   return venc < today() ? 'overdue' : 'pending';
 }
@@ -995,7 +1017,7 @@ function renderTable(){
       <td style="color:${e.color||'inherit'};font-weight:500">${dot}${esc(e.name)}${recBadge}${modBadge}</td>
       <td><span class="cbadge">${esc(e.category)}</span></td>
       <td class="${ac}">${fmtR(e.amount)}</td>
-      <td style="color:${st==='overdue'?'var(--red)':st==='paid'?'var(--green)':'var(--muted)'};font-weight:${st!=='pending'?600:400}">${fmtD(e.dueDate)}</td>
+      <td style="color:${st==='overdue'?'var(--red)':st==='paid'?'var(--green)':'var(--muted)'};font-weight:${st!=='pending'?600:400}">${fmtD(e._dueDate||e.dueDate)}</td>
       <td>${badge}</td>
       <td>${ddMenu}</td>
     </tr>`).join('');
@@ -1010,7 +1032,7 @@ function renderTable(){
         <div class="mcard-body">
           <div class="mcard-cell"><span class="mcard-lbl">Categoria</span><span class="mcard-val"><span class="cbadge">${esc(e.category)}</span></span></div>
           <div class="mcard-cell"><span class="mcard-lbl">Valor</span><span class="mcard-val ${st==='overdue'?'amt-overdue':st==='paid'?'amt-paid':''}" style="font-weight:600">${fmtR(e.amount)}</span></div>
-          <div class="mcard-cell"><span class="mcard-lbl">Vencimento</span><span class="mcard-val" style="color:${st==='overdue'?'var(--red)':st==='paid'?'var(--green)':'var(--muted)'};font-weight:${st!=='pending'?600:400}">${fmtD(e.dueDate)}</span></div>
+          <div class="mcard-cell"><span class="mcard-lbl">Vencimento</span><span class="mcard-val" style="color:${st==='overdue'?'var(--red)':st==='paid'?'var(--green)':'var(--muted)'};font-weight:${st!=='pending'?600:400}">${fmtD(e._dueDate||e.dueDate)}</span></div>
           <div class="mcard-cell"><span class="mcard-lbl">Status</span><span class="mcard-val">${badge}</span></div>
         </div>
       </div>`).join('');
