@@ -797,8 +797,14 @@ function renderInvTable(){
   }
   empty.style.display='none';
   const rows=S.investments.map(i=>{
-    const cur=i.amount*(1+(i.rent||0)/100);
-    const gain=cur-i.amount;
+    const today_ = today();
+    const start  = new Date((i.date||today_)+'T00:00:00');
+    const end    = new Date(today_+'T00:00:00');
+    const days   = Math.max(0, (end - start) / 86400000);
+    const years  = days / 365;
+    // Compound interest: P × (1 + r)^t  where r = annual rate / 100
+    const cur    = i.amount * Math.pow(1 + (i.rent||0)/100, years);
+    const gain   = cur - i.amount;
     const gainCls=gain>=0?'amt-paid':'amt-overdue';
     const dot=`<span class="name-dot" style="background:${i.color||'#2563eb'}"></span>`;
     const ddMenu=`<div class="ddwrap">
@@ -838,9 +844,13 @@ function renderInvTable(){
   renderInvSummary();
 }
 function renderInvSummary(){
-  const total=S.investments.reduce((s,i)=>s+i.amount,0);
-  const totalCur=S.investments.reduce((s,i)=>s+i.amount*(1+(i.rent||0)/100),0);
-  const gain=totalCur-total;
+  const today_ = today();
+  const total    = S.investments.reduce((s,i)=>s+i.amount,0);
+  const totalCur = S.investments.reduce((s,i)=>{
+    const days  = Math.max(0,(new Date(today_+'T00:00:00')-new Date((i.date||today_)+'T00:00:00'))/86400000);
+    return s + i.amount * Math.pow(1+(i.rent||0)/100, days/365);
+  },0);
+  const gain = totalCur - total;
   $('inv-sgrid').innerHTML=`
     <div class="scard"><div class="scard-lbl">Total Investido</div><div class="scard-val">${fmtR(total)}</div></div>
     <div class="scard"><div class="scard-lbl">Valor Atual</div><div class="scard-val">${fmtR(totalCur)}</div></div>

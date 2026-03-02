@@ -180,7 +180,12 @@ input[type=color].fc{padding:4px 8px;height:40px;cursor:pointer}
 
 /* ── STATS ──────────────────────────────────────────────── */
 .sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:20px}
-.scard{padding:18px 20px}
+.scard{padding:18px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);transition:background var(--t),border-color var(--t)}
+.scard-warn{border-color:var(--red);background:var(--red-l)}
+/* Labels / values used by renderStats() and renderInvSummary() */
+.scard-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:7px}
+.scard-val{font-family:'DM Serif Display',serif;font-size:22px;color:var(--text);line-height:1.1;margin-top:4px}
+/* Legacy aliases (kept for any future use) */
 .slabel{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:7px}
 .sval{font-family:'DM Serif Display',serif;font-size:24px;color:var(--text)}
 .sval.green{color:var(--green)}
