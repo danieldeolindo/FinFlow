@@ -402,6 +402,31 @@
   </div>
 </div>
 
+<!-- ═══ MODAL SCOPE (Apenas este mês / Todos os meses) ═══ -->
+<div class="mov" id="mov-scope">
+  <div class="modal" style="max-width:380px">
+    <div class="mtitle" id="scope-title">Editar lançamento</div>
+    <p id="scope-desc" style="color:var(--muted);font-size:13px;margin-bottom:20px"></p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button class="btn btn-primary" style="justify-content:flex-start;gap:10px;padding:13px 16px;font-size:14px" onclick="_handleScopeChoice('month')">
+        <span style="font-size:18px">📅</span>
+        <div style="text-align:left">
+          <div id="scope-month-lbl" style="font-weight:600">Apenas este mês</div>
+          <div style="font-size:11px;opacity:.75;margin-top:2px">Afeta somente a competência selecionada</div>
+        </div>
+      </button>
+      <button class="btn btn-ghost" style="justify-content:flex-start;gap:10px;padding:13px 16px;font-size:14px;border-width:1.5px" onclick="_handleScopeChoice('all')">
+        <span style="font-size:18px">🔁</span>
+        <div style="text-align:left">
+          <div id="scope-all-lbl" style="font-weight:600">Todos os meses</div>
+          <div style="font-size:11px;opacity:.7;margin-top:2px">Afeta toda a recorrência</div>
+        </div>
+      </button>
+    </div>
+    <div class="mactions"><button class="btn btn-ghost btn-sm" onclick="closeModal('mov-scope')">Cancelar</button></div>
+  </div>
+</div>
+
 <script type="module" src="finflow.js"></script>
 </body>
 </html>
