@@ -132,6 +132,8 @@ input[type=color].fc{padding:4px 8px;height:40px;cursor:pointer}
 .amt-overdue{color:var(--red)!important}
 .amt-paid{color:var(--green)!important}
 .name-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;flex-shrink:0;vertical-align:middle}
+.name-badge{display:inline-flex;align-items:center;gap:0;padding:3px 10px 3px 7px;border-radius:20px;font-size:13px;font-weight:500;background:rgba(120,113,108,.08);color:inherit;white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
+[data-theme=dark] .name-badge{background:rgba(255,255,255,.07)}
 .empty{text-align:center;padding:52px 20px;color:var(--muted)}
 .empty-ico{font-size:38px;margin-bottom:10px}
 .empty-title{font-size:15px;font-weight:500;margin-bottom:5px}

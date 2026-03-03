@@ -998,6 +998,7 @@ function renderTable(){
     const hasMod = !!(e.modificacoes||{})[ym] && Object.keys((e.modificacoes||{})[ym]||{}).length > 0;
     const modBadge = hasMod ? '<span style="font-size:10px;color:var(--yellow);font-weight:600;margin-left:4px" title="Modificado neste mês">✎</span>' : '';
     const dot=`<span class="name-dot" style="background:${e.color||'#2d6a4f'}"></span>`;
+    const nameBadge=`<span class="name-badge"><span class="name-dot" style="background:${e.color||'#2d6a4f'}"></span>${esc(e.name)}</span>`;
     const payItem = st === 'paid'
       ? `<button class="dditem dditem-undo" data-act="pay" data-id="${e.id}">↩ Desfazer pagamento</button>`
       : `<button class="dditem dditem-pay" data-act="pay" data-id="${e.id}">✅ Pagar</button>`;
@@ -1014,7 +1015,7 @@ function renderTable(){
   });
   // Desktop table
   tbody.innerHTML=rows.map(({e,st,rc,ac,badge,recBadge,modBadge,dot,ddMenu})=>`<tr class="${rc}">
-      <td style="color:${e.color||'inherit'};font-weight:500">${dot}${esc(e.name)}${recBadge}${modBadge}</td>
+      <td>${nameBadge}${recBadge}${modBadge}</td>
       <td><span class="cbadge">${esc(e.category)}</span></td>
       <td class="${ac}">${fmtR(e.amount)}</td>
       <td style="color:${st==='overdue'?'var(--red)':st==='paid'?'var(--green)':'var(--muted)'};font-weight:${st!=='pending'?600:400}">${fmtD(e._dueDate||e.dueDate)}</td>
@@ -1026,7 +1027,7 @@ function renderTable(){
     mcardList.innerHTML=rows.map(({e,st,badge,recBadge,modBadge,dot,ddMenu})=>`
       <div class="mcard${st==='overdue'?' mc-overdue':st==='paid'?' mc-paid':''}">
         <div class="mcard-top">
-          <div class="mcard-name">${dot}<span style="color:${e.color||'inherit'}">${esc(e.name)}</span>${recBadge}${modBadge}</div>
+          <div class="mcard-name">${nameBadge}${recBadge}${modBadge}</div>
           ${ddMenu}
         </div>
         <div class="mcard-body">
@@ -1455,8 +1456,64 @@ $$('.mov').forEach(m=>{m.addEventListener('click',e=>{if(e.target===m)m.classLis
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$$('.mov').forEach(m=>m.classList.remove('open'))});
 
 /* ═══════════════════════════════════════════════════════════
-   INIT
+   SWIPE ENTRE MESES (mobile)
+   Arrastar horizontalmente na área de conteúdo troca o mês.
+   Só ativa em telas ≤768px e quando a aba de lançamentos está ativa.
 ═══════════════════════════════════════════════════════════ */
+(function initSwipe(){
+  const THRESHOLD = 55;   // px mínimo para considerar swipe
+  const MAX_VERT  = 60;   // px vertical máximo (evita conflito com scroll)
+  let tx=0, ty=0, swiping=false;
+
+  function onTouchStart(e){
+    if(window.innerWidth > 768) return;
+    const t = e.touches[0];
+    tx = t.clientX; ty = t.clientY; swiping = true;
+  }
+
+  function onTouchEnd(e){
+    if(!swiping) return;
+    swiping = false;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - tx;
+    const dy = Math.abs(t.clientY - ty);
+    if(Math.abs(dx) < THRESHOLD || dy > MAX_VERT) return;
+
+    // Só troca mês se a aba de lançamentos estiver visível
+    const tabActive = $('tab-lancamentos');
+    if(!tabActive || !tabActive.classList.contains('active')) return;
+
+    // Swipe esquerda → próximo mês | direita → mês anterior
+    if(dx < 0){
+      // avança
+      let m = S.selectedMonth + 1, y = S.selectedYear;
+      if(m > 11){ m = 0; y++; }
+      S.selectedMonth = m; S.selectedYear = y;
+    } else {
+      // recua
+      let m = S.selectedMonth - 1, y = S.selectedYear;
+      if(m < 0){ m = 11; y--; }
+      S.selectedMonth = m; S.selectedYear = y;
+    }
+    _applyDateFilter();
+    _flashMonthBar();
+  }
+
+  // Feedback visual: pisca brevemente a barra de meses
+  function _flashMonthBar(){
+    const bar = $('mbar-wrap');
+    if(!bar) return;
+    bar.style.transition = 'opacity .1s';
+    bar.style.opacity = '0.4';
+    setTimeout(()=>{ bar.style.opacity = '1'; }, 120);
+  }
+
+  // Attaches on the content area to avoid conflito com sidebar/modals
+  document.addEventListener('touchstart', onTouchStart, {passive:true});
+  document.addEventListener('touchend',   onTouchEnd,   {passive:true});
+})();
+
+
 function syncSearchPlaceholder(){
   const inp=$('srch');if(!inp)return;
   inp.placeholder=window.innerWidth<=768?'':'Buscar por nome...';
