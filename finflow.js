@@ -252,86 +252,60 @@ const fmtD=d=>{if(!d)return'—';const[y,m,dy]=d.split('-');return`${dy}/${m}/${
 const today=()=>new Date().toISOString().split('T')[0];
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2);
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-/* ── INSTÂNCIA MENSAL ───────────────────────────────────────
-   Retorna os dados resolvidos de um lançamento para um mês específico,
-   aplicando modificações pontuais e verificando exceções.
-   ym = "YYYY-MM"
-────────────────────────────────────────────────────────── */
-function ymKey(year, month) {
-  return `${year}-${String(month+1).padStart(2,'0')}`;
-}
-function currentYM() {
-  return ymKey(S.selectedYear, S.selectedMonth);
-}
-function getInstancia(e, ym) {
-  // Resolve dados do lançamento para uma competência específica
-  const mod = (e.modificacoes||{})[ym];
-  const tipo = e.recorrenciaTipo||(e.recorrente||e.isTemplate||e.recurrence==='monthly'?'infinita':'nenhuma');
-  const isRecorrente = tipo === 'infinita' || tipo === 'parcelada';
-
-  // ── Vencimento da instância ────────────────────────────────
-  // Para recorrentes: usa o DIA original mas o MÊS/ANO da competência exibida.
-  // Isso evita que meses futuros sejam marcados como atrasados com base na data de criação.
-  let instDueDate = e.dueDate || '';
-  if(isRecorrente && instDueDate){
-    const [ymYear, ymMonth] = ym.split('-').map(Number);
-    const diaOriginal = new Date(instDueDate + 'T00:00:00').getDate();
-    // Cria data da instância: dia fixo + mês/ano da competência
-    const d = new Date(ymYear, ymMonth - 1, diaOriginal);
-    // Protege contra overflow de mês (ex: dia 31 em mês de 30 dias → usa último dia)
-    if(d.getMonth() !== ymMonth - 1) d.setDate(0);
-    instDueDate = d.toISOString().split('T')[0];
+/* ── INSTÂNCIA MENSAL ─────────────────────────────────── */
+function ymKey(year,month){return `${year}-${String(month+1).padStart(2,'0')}`}
+function currentYM(){return ymKey(S.selectedYear,S.selectedMonth)}
+function getInstancia(e,ym){
+  const mod=(e.modificacoes||{})[ym]||{};
+  const tipo=e.recorrenciaTipo||(e.recorrente||e.isTemplate||e.recurrence==='monthly'?'infinita':'nenhuma');
+  const isRec=tipo==='infinita'||tipo==='parcelada';
+  let instDueDate=e.dueDate||'';
+  if(isRec&&instDueDate){
+    const[ymYear,ymMonth]=ym.split('-').map(Number);
+    const diaOrig=new Date(instDueDate+'T00:00:00').getDate();
+    const d=new Date(ymYear,ymMonth-1,diaOrig);
+    if(d.getMonth()!==ymMonth-1)d.setDate(0);
+    instDueDate=d.toISOString().split('T')[0];
   }
-
-  return {
+  return{
     ...e,
-    name:        mod?.nome      ?? e.name,
-    amount:      mod?.valor     ?? e.amount,
-    category:    mod?.categoria ?? e.category,
-    _ym:         ym,
-    _dueDate:    instDueDate,   // vencimento calculado para esta competência
-    _isPaid:     !!((e.pagamentos||{})[ym]),
-    _hasException: !!((e.excecoes||{})[ym]),
+    name:      mod.nome!==undefined?mod.nome:e.name,
+    amount:    mod.valor!==undefined?mod.valor:e.amount,
+    category:  mod.categoria!==undefined?mod.categoria:e.category,
+    _ym:ym, _dueDate:instDueDate,
+    _isPaid:!!((e.pagamentos||{})[ym]),
+    _hasException:!!((e.excecoes||{})[ym]),
   };
 }
-
-function status(e, ym){
-  // Suporta modo legado (campo paid) e novo (pagamentos[ym])
-  const pago = ym
-    ? !!((e.pagamentos||{})[ym])
-    : !!(e.paid || e._isPaid);
-  if(pago) return 'paid';
-
-  // Usa _dueDate (vencimento da instância) se disponível, senão dueDate base
-  const venc = e._dueDate || e.dueDate || '';
-  if(!venc) return 'pending';
-  return venc < today() ? 'overdue' : 'pending';
+function status(e,ym){
+  const ymSafe=ym||e._ym||'';
+  const pago=ymSafe?!!((e.pagamentos||{})[ymSafe]):!!(e.paid||e._isPaid);
+  if(pago)return'paid';
+  const venc=e._dueDate||e.dueDate||'';
+  if(!venc)return'pending';
+  return venc<today()?'overdue':'pending';
 }
 
 /* ── CENTRAL MONTH FILTER ───────────────────────────────── */
 function filterByMonth(arr){
   const selM=S.selectedMonth, selY=S.selectedYear;
   const selYM=selY*12+selM;
-  const ym=ymKey(selY, selM);
+  const ym=ymKey(selY,selM);
   return arr.filter(e=>{
-    // Verificar exceção: se excecoes[ym] === true, não renderizar
-    if((e.excecoes||{})[ym]) return false;
+    if((e.excecoes||{})[ym])return false;
     const dateStr=e.dueDate||e.date||'';
     const startDate=new Date(dateStr+'T00:00:00');
-    const startM=startDate.getMonth();
-    const startY=startDate.getFullYear();
-    const startYM=startY*12+startM;
+    const startYM=startDate.getFullYear()*12+startDate.getMonth();
     const tipo=e.recorrenciaTipo
       ||(e.recorrente||e.isTemplate||e.recurrence==='monthly'?'infinita':'nenhuma');
     if(tipo==='nenhuma'||tipo==='none'||!tipo) return selYM===startYM;
     if(tipo==='infinita'||tipo==='monthly')   return selYM>=startYM;
     if(tipo==='parcelada'){
       const meses=parseInt(e.recorrenciaMeses)||1;
-      const endYM=startYM+meses-1;
-      return selYM>=startYM&&selYM<=endYM;
+      return selYM>=startYM&&selYM<=startYM+meses-1;
     }
     return false;
-  }).map(e => getInstancia(e, ym)); // Resolve dados mensais (modificações, pagamentos)
+  }).map(e=>getInstancia(e,ym));
 }
 function monthlyExpenses(){return filterByMonth(S.expenses)}
 function periodFilter(arr,dateKey){
@@ -537,11 +511,10 @@ function closeModal(id){$(id).classList.remove('open')}
 function openModal(expId){
   closeAllDD();
   S.editExpId=expId||null;
-  S.editExpYM=null; // sempre null ao abrir modal base
+  S.editExpYM=null;
   $('mexp-title').textContent=expId?'Editar Lançamento':'Novo Lançamento';
-  // Garante que campo de recorrência está visível
-  const recRow=$('inp-rec').closest('.fg');
-  if(recRow) recRow.style.display='';
+  const recRow=$('inp-rec')&&$('inp-rec').closest('.fg');
+  if(recRow)recRow.style.display='';
   fillCatSelects();
   if(expId){
     const e=S.expenses.find(x=>x.id===expId);
@@ -613,33 +586,27 @@ async function saveExpense(){
     alert('Informe o número de parcelas (mínimo 2).');$('inp-parcelas').focus();return
   }
 
-  // ── Edição mensal (apenas este mês) ────────────────────
-  if(S.editExpId && S.editExpYM){
-    const ym  = S.editExpYM;
-    const idx = S.expenses.findIndex(x=>x.id===S.editExpId);
-    if(idx !== -1){
-      const e = S.expenses[idx];
-      if(!e.modificacoes) e.modificacoes = {};
-      // Salva apenas os campos que mudaram em relação à base
-      const mod = {};
-      if(name     !== e.name)     mod.nome      = name;
-      if(amount   !== e.amount)   mod.valor     = amount;
-      if(category !== e.category) mod.categoria = category;
-      if(Object.keys(mod).length){
-        e.modificacoes[ym] = mod;
-      } else {
-        // Nenhuma mudança: remove modificação existente se houver
-        delete e.modificacoes[ym];
-      }
+  /* ── Edição mensal (apenas este mês) */
+  if(S.editExpId&&S.editExpYM){
+    const ym=S.editExpYM;
+    const idx=S.expenses.findIndex(x=>x.id===S.editExpId);
+    if(idx!==-1){
+      const e=S.expenses[idx];
+      if(!e.modificacoes)e.modificacoes={};
+      const mod={};
+      if(name!==e.name)mod.nome=name;
+      if(amount!==e.amount)mod.valor=amount;
+      if(category!==e.category)mod.categoria=category;
+      if(Object.keys(mod).length)e.modificacoes[ym]=mod;
+      else delete e.modificacoes[ym];
       await persistExpense(e);
     }
-    _closeExpModal();
-    renderTable(); checkAlerts();
+    _closeExpModal();renderTable();checkAlerts();
     if($('tab-dashboard').classList.contains('active')){destroyAll();renderAllCharts()}
     return;
   }
 
-  // ── Edição base (todos os meses) ou novo ───────────────
+  /* ── Novo ou edição base */
   let dataFinal=null;
   if(recorrenciaTipo==='parcelada'&&recorrenciaMeses){
     const d=new Date(dueDate+'T00:00:00');
@@ -649,28 +616,16 @@ async function saveExpense(){
   const recorrente=recorrenciaTipo==='infinita';
   const isTemplate=recorrente;
   const recurrence=recorrenciaTipo==='infinita'?'monthly':'none';
-
-  const payload={
-    name,category,amount,dueDate,color,date:dueDate,
-    recorrenciaTipo,recorrenciaMeses,dataFinal,
-    recorrente,isTemplate,recurrence
-  };
+  const payload={name,category,amount,dueDate,color,date:dueDate,recorrenciaTipo,recorrenciaMeses,dataFinal,recorrente,isTemplate,recurrence};
 
   if(S.editExpId){
     const idx=S.expenses.findIndex(x=>x.id===S.editExpId);
-    if(idx!==-1){
-      S.expenses[idx]={...S.expenses[idx],...payload};
-      await persistExpense(S.expenses[idx]);
-    }
-    S.editExpId=null;
+    if(idx!==-1){S.expenses[idx]={...S.expenses[idx],...payload};await persistExpense(S.expenses[idx]);}
   }else{
     const newExp={id:uid(),paid:false,pagamentos:{},modificacoes:{},excecoes:{},templateId:null,...payload};
-    S.expenses.push(newExp);
-    await persistExpense(newExp);
+    S.expenses.push(newExp);await persistExpense(newExp);
   }
-
-  _closeExpModal();
-  renderTable();checkAlerts();
+  _closeExpModal();renderTable();checkAlerts();
   if($('tab-dashboard').classList.contains('active')){destroyAll();renderAllCharts()}
 }
 
@@ -679,191 +634,121 @@ function _closeExpModal(){
   $('inp-name').value='';$('inp-cat').value='';$('inp-val').value='';
   $('inp-due').value='';$('inp-color').value='#2d6a4f';
   $('inp-rec').value='nenhuma';$('inp-parcelas').value='';
-  $('fg-parcelas').style.display='none';
-  $('cat-sugg').innerHTML='';
-  // Restaura campo de recorrência (pode ter sido ocultado em edição mensal)
-  const recRow=$('inp-rec').closest('.fg');
-  if(recRow) recRow.style.display='';
-  S.editExpId=null;
-  S.editExpYM=null;
+  $('fg-parcelas').style.display='none';$('cat-sugg').innerHTML='';
+  const recRow=$('inp-rec')&&$('inp-rec').closest('.fg');
+  if(recRow)recRow.style.display='';
+  S.editExpId=null;S.editExpYM=null;
 }
 
 /* ═══════════════════════════════════════════════════════════
    EXPENSE ACTIONS — modelo mensal
 ═══════════════════════════════════════════════════════════ */
-
-/* ── PAGAR: sempre por competência mensal ─────────────── */
 async function markPaid(id){
-  const ym = currentYM();
-  const i = S.expenses.findIndex(x=>x.id===id);
-  if(i === -1) return;
-  const e = S.expenses[i];
-  // Garante que pagamentos existe
-  if(!e.pagamentos) e.pagamentos = {};
-  const tipo = e.recorrenciaTipo||(e.recorrente||e.isTemplate?'infinita':'nenhuma');
-  const isRecorrente = tipo==='infinita'||tipo==='parcelada';
-  if(isRecorrente){
-    // Togela apenas o mês atual
-    e.pagamentos[ym] = !e.pagamentos[ym];
-    // Remove a flag legada para não conflitar
-    delete e.paid;
-  } else {
-    // Lançamento único: mantém compatibilidade, também grava em pagamentos
-    e.pagamentos[ym] = !e.pagamentos[ym];
-    e.paid = e.pagamentos[ym]; // mantém campo legado para não quebrar filtros antigos
-  }
+  const ym=currentYM();
+  const i=S.expenses.findIndex(x=>x.id===id);
+  if(i===-1)return;
+  const e=S.expenses[i];
+  if(!e.pagamentos)e.pagamentos={};
+  const tipo=e.recorrenciaTipo||(e.recorrente||e.isTemplate?'infinita':'nenhuma');
+  const isRec=tipo==='infinita'||tipo==='parcelada';
+  e.pagamentos[ym]=!e.pagamentos[ym];
+  if(isRec)delete e.paid;
+  else e.paid=e.pagamentos[ym];
   await persistExpense(e);
-  renderTable(); checkAlerts();
+  renderTable();checkAlerts();
 }
 
-/* ── EDITAR: abre diálogo de escopo ──────────────────── */
 function editExp(id){
-  const e = S.expenses.find(x=>x.id===id);
-  if(!e) return;
-  const tipo = e.recorrenciaTipo||(e.recorrente||e.isTemplate?'infinita':'nenhuma');
-  const isRecorrente = tipo==='infinita'||tipo==='parcelada';
-  if(!isRecorrente){
-    // Lançamento único: edita direto
-    openModal(id);
-    return;
-  }
-  // Recorrente: pergunta escopo
-  openScopeModal('edit', id);
+  const e=S.expenses.find(x=>x.id===id);if(!e)return;
+  const tipo=e.recorrenciaTipo||(e.recorrente||e.isTemplate?'infinita':'nenhuma');
+  if(tipo==='infinita'||tipo==='parcelada')openScopeModal('edit',id);
+  else openModal(id);
 }
 
-/* ── EXCLUIR: abre diálogo de escopo ─────────────────── */
-function delExp(id){
-  const e = S.expenses.find(x=>x.id===id);
-  if(!e) return;
-  const tipo = e.recorrenciaTipo||(e.recorrente||e.isTemplate?'infinita':'nenhuma');
-  const isRecorrente = tipo==='infinita'||tipo==='parcelada';
-  if(!isRecorrente){
-    _delExpFull(id);
-    return;
-  }
-  openScopeModal('del', id);
+async function delExp(id){
+  const e=S.expenses.find(x=>x.id===id);if(!e)return;
+  const tipo=e.recorrenciaTipo||(e.recorrente||e.isTemplate?'infinita':'nenhuma');
+  if(tipo==='infinita'||tipo==='parcelada')openScopeModal('del',id);
+  else _delExpFull(id);
 }
 
 async function _delExpFull(id){
-  if(!confirm('Excluir este lançamento?')) return;
-  S.expenses = S.expenses.filter(e=>e.id!==id);
+  if(!confirm('Excluir este lançamento?'))return;
+  S.expenses=S.expenses.filter(e=>e.id!==id);
   await deleteExpense(id);
-  renderTable(); checkAlerts();
+  renderTable();checkAlerts();
   if($('tab-dashboard').classList.contains('active')){destroyAll();renderAllCharts()}
 }
 
 async function _delExpMonth(id){
-  const ym = currentYM();
-  const i = S.expenses.findIndex(x=>x.id===id);
-  if(i === -1) return;
-  if(!S.expenses[i].excecoes) S.expenses[i].excecoes = {};
-  S.expenses[i].excecoes[ym] = true;
+  const ym=currentYM();
+  const i=S.expenses.findIndex(x=>x.id===id);if(i===-1)return;
+  if(!S.expenses[i].excecoes)S.expenses[i].excecoes={};
+  S.expenses[i].excecoes[ym]=true;
   await persistExpense(S.expenses[i]);
-  renderTable(); checkAlerts();
+  renderTable();checkAlerts();
   if($('tab-dashboard').classList.contains('active')){destroyAll();renderAllCharts()}
 }
 
-/* ── MODAL DE ESCOPO (este mês / todos) ──────────────── */
-let _scopeAction = null;
-let _scopeExpId  = null;
+/* ── MODAL DE ESCOPO ─────────────────────────────────── */
+let _scopeAction=null,_scopeExpId=null;
 
-function openScopeModal(action, id){
-  _scopeAction = action;
-  _scopeExpId  = id;
-  const e = S.expenses.find(x=>x.id===id);
-  const ym = currentYM();
-  const [y,m] = ym.split('-');
-  const mesLabel = `${MONTHS[parseInt(m)-1]} ${y}`;
-  const isEdit = action === 'edit';
-  const icon   = isEdit ? '✏️' : '🗑️';
-  const verb   = isEdit ? 'editar' : 'excluir';
-  const modal  = $('mov-scope');
-  $('scope-title').textContent  = `${icon} ${isEdit ? 'Editar' : 'Excluir'} lançamento`;
-  $('scope-desc').textContent   = `Deseja ${verb} apenas este mês ou toda a recorrência?`;
-  $('scope-month-lbl').textContent = `Apenas ${mesLabel}`;
-  $('scope-all-lbl').textContent   = isEdit ? 'Todos os meses (editar base)' : 'Todos os meses (excluir recorrência)';
+function openScopeModal(action,id){
+  _scopeAction=action;_scopeExpId=id;
+  const modal=$('mov-scope');
+  /* SEGURO: se o modal não existe no HTML, faz fallback direto */
+  if(!modal){
+    if(action==='edit')openModal(id);
+    else _delExpFull(id);
+    return;
+  }
+  const ym=currentYM();
+  const[y,m]=ym.split('-');
+  const mesLabel=`${MONTHS[parseInt(m)-1]} ${y}`;
+  const isEdit=action==='edit';
+  $('scope-title').textContent=isEdit?'✏️ Editar lançamento':'🗑️ Excluir lançamento';
+  $('scope-desc').textContent=`Deseja ${isEdit?'editar':'excluir'} apenas este mês ou toda a recorrência?`;
+  $('scope-month-lbl').textContent=`Apenas ${mesLabel}`;
+  $('scope-all-lbl').textContent=isEdit?'Todos os meses (editar base)':'Todos os meses (excluir recorrência)';
   modal.classList.add('open');
 }
 
-function closeScopeModal(){
-  $('mov-scope').classList.remove('open');
-  _scopeAction = null;
-  _scopeExpId  = null;
-}
-
-async function applyScopeMonth(){
-  closeScopeModal();
-  if(_scopeAction === null || _scopeExpId === null) return; // já foram limpos, usa valores salvos antes
-  // Pega os valores antes do close ter limpado
-  const act = _scopeAction || window._lastScopeAction;
-  const id  = _scopeExpId  || window._lastScopeExpId;
-  if(act === 'edit'){
-    // Abre modal de edição passando contexto "apenas este mês"
-    openModalMonthEdit(id);
-  } else {
-    await _delExpMonth(id);
-  }
-}
-
-async function applyScopeAll(){
-  closeScopeModal();
-  const act = _scopeAction || window._lastScopeAction;
-  const id  = _scopeExpId  || window._lastScopeExpId;
-  if(act === 'edit'){
-    openModal(id); // edita base normalmente
-  } else {
-    await _delExpFull(id);
-  }
-}
-
-// Versão corrigida que guarda valores antes de chamar close
 function _handleScopeChoice(choice){
-  const act = _scopeAction;
-  const id  = _scopeExpId;
-  $('mov-scope').classList.remove('open');
-  _scopeAction = null;
-  _scopeExpId  = null;
-  if(choice === 'month'){
-    if(act === 'edit'){
-      openModalMonthEdit(id);
-    } else {
-      _delExpMonth(id);
-    }
-  } else {
-    if(act === 'edit'){
-      openModal(id);
-    } else {
-      _delExpFull(id);
-    }
+  /* Guarda ANTES de limpar */
+  const act=_scopeAction,id=_scopeExpId;
+  const modal=$('mov-scope');if(modal)modal.classList.remove('open');
+  _scopeAction=null;_scopeExpId=null;
+  if(!act||!id)return;
+  if(choice==='month'){
+    if(act==='edit')openModalMonthEdit(id);
+    else _delExpMonth(id);
+  }else{
+    if(act==='edit')openModal(id);
+    else _delExpFull(id);
   }
 }
+function closeScopeModal(){_scopeAction=null;_scopeExpId=null;const m=$('mov-scope');if(m)m.classList.remove('open')}
+function applyScopeMonth(){_handleScopeChoice('month')}
+function applyScopeAll(){_handleScopeChoice('all')}
 
-/* ── MODAL DE EDIÇÃO MENSAL ──────────────────────────── */
-// Abre o modal de edição preenchido com os dados da instância do mês
 function openModalMonthEdit(id){
-  const ym  = currentYM();
-  const e   = S.expenses.find(x=>x.id===id);
-  if(!e) return;
-  const inst = getInstancia(e, ym);
-  // Reutiliza o modal de despesa mas com flag de edição mensal
-  S.editExpId = id;
-  S.editExpYM = ym; // sinaliza que é edição mensal
-  $('mexp-title').textContent = `✏️ Editar — ${MONTHS[S.selectedMonth]} ${S.selectedYear}`;
+  const ym=currentYM();
+  const e=S.expenses.find(x=>x.id===id);if(!e)return;
+  const inst=getInstancia(e,ym);
+  S.editExpId=id;S.editExpYM=ym;
+  $('mexp-title').textContent=`✏️ Editar — ${MONTHS[S.selectedMonth]} ${S.selectedYear}`;
   fillCatSelects();
-  $('inp-name').value   = inst.name;
-  setTimeout(()=>{ $('inp-cat').value = inst.category }, 0);
-  $('inp-val').value    = inst.amount;
-  $('inp-due').value    = e.dueDate||'';
-  $('inp-color').value  = e.color||'#2d6a4f';
-  // Para edição mensal, oculta campo de recorrência (não altera a base)
-  const recRow = $('inp-rec').closest('.fg');
-  if(recRow) recRow.style.display = 'none';
-  $('fg-parcelas').style.display = 'none';
-  $('cat-sugg').innerHTML = '';
+  $('inp-name').value=inst.name;
+  $('inp-val').value=inst.amount;
+  $('inp-due').value=e.dueDate||'';
+  $('inp-color').value=e.color||'#2d6a4f';
+  const recRow=$('inp-rec')&&$('inp-rec').closest('.fg');
+  if(recRow)recRow.style.display='none';
+  $('fg-parcelas').style.display='none';$('cat-sugg').innerHTML='';
+  setTimeout(()=>{$('inp-cat').value=inst.category},0);
   $('mov-exp').classList.add('open');
-  setTimeout(()=>$('inp-name').focus(), 50);
+  setTimeout(()=>$('inp-name').focus(),50);
 }
-
 
 /* ═══════════════════════════════════════════════════════════
    SAVE INVESTMENT
@@ -954,11 +839,9 @@ function renderTable(){
   const cat=$('fCat').value;
   const sf=$('fStatus').value;
   const so=$('fSort').value;
-  // filterByMonth já retorna instâncias resolvidas via getInstancia
   let list=filterByMonth(S.expenses);
   if(srch)list=list.filter(e=>e.name.toLowerCase().includes(srch));
   if(cat)list=list.filter(e=>e.category===cat);
-  // status agora usa _ym da instância
   if(sf)list=list.filter(e=>status(e,e._ym)===sf);
   if(so){
     const[f,d]=so.split('-');
@@ -972,7 +855,7 @@ function renderTable(){
     });
   }else{
     const ord={overdue:0,pending:1,paid:2};
-    list.sort((a,b)=>{const sa=status(a,a._ym),sb=status(b,b._ym);return ord[sa]!==ord[sb]?ord[sa]-ord[sb]:(a.dueDate||'').localeCompare(b.dueDate||'')});
+    list.sort((a,b)=>{const sa=status(a),sb=status(b);return ord[sa]!==ord[sb]?ord[sa]-ord[sb]:(a.dueDate||'').localeCompare(b.dueDate||'')});
   }
   const tbody=$('tbody'),empty=$('empty-exp'),mcardList=$('mcard-exp');
   if(!list.length){
@@ -983,8 +866,8 @@ function renderTable(){
   }
   empty.style.display='none';
   const rows=list.map(e=>{
-    const ym = e._ym;
-    const st = status(e, ym);
+    const ym=e._ym;
+    const st=status(e,ym);
     const rc=st==='overdue'?'tr-overdue':st==='paid'?'tr-paid':'';
     const ac=st==='overdue'?'amt amt-overdue':st==='paid'?'amt amt-paid':'amt';
     const badge=st==='paid'?'<span class="sbadge s-paid">✅ Pago</span>':st==='overdue'?'<span class="sbadge s-overdue">🔴 Vencido</span>':'<span class="sbadge s-pending">🕐 Pendente</span>';
@@ -994,14 +877,12 @@ function renderTable(){
       :tipo==='parcelada'
         ?`<span style="font-size:10px;color:#7c3aed;font-weight:600;margin-left:4px" title="Parcelado em ${e.recorrenciaMeses}x">📦${e.recorrenciaMeses}x</span>`
         :'';
-    // Badge de modificação mensal
-    const hasMod = !!(e.modificacoes||{})[ym] && Object.keys((e.modificacoes||{})[ym]||{}).length > 0;
-    const modBadge = hasMod ? '<span style="font-size:10px;color:var(--yellow);font-weight:600;margin-left:4px" title="Modificado neste mês">✎</span>' : '';
-    const dot=`<span class="name-dot" style="background:${e.color||'#2d6a4f'}"></span>`;
+    const hasMod=Object.keys((e.modificacoes||{})[ym]||{}).length>0;
+    const modBadge=hasMod?'<span style="font-size:10px;color:var(--yellow);font-weight:600;margin-left:4px" title="Modificado neste mês">✎</span>':'';
     const nameBadge=`<span class="name-badge"><span class="name-dot" style="background:${e.color||'#2d6a4f'}"></span>${esc(e.name)}</span>`;
-    const payItem = st === 'paid'
-      ? `<button class="dditem dditem-undo" data-act="pay" data-id="${e.id}">↩ Desfazer pagamento</button>`
-      : `<button class="dditem dditem-pay" data-act="pay" data-id="${e.id}">✅ Pagar</button>`;
+    const payItem=st==='paid'
+      ?`<button class="dditem dditem-undo" data-act="pay" data-id="${e.id}">↩ Desfazer pagamento</button>`
+      :`<button class="dditem dditem-pay" data-act="pay" data-id="${e.id}">✅ Pagar</button>`;
     const ddMenu=`<div class="ddwrap">
           <button class="ddbtn" data-act="opts" data-id="${e.id}" aria-haspopup="true" aria-expanded="false">Opções</button>
           <div class="ddmenu" role="menu">
@@ -1011,10 +892,10 @@ function renderTable(){
             <button class="dditem dditem-del" data-act="del" data-id="${e.id}" role="menuitem">🗑️ Excluir</button>
           </div>
         </div>`;
-    return{e,st,rc,ac,badge,recBadge,modBadge,dot,payItem,ddMenu};
+    return{e,st,rc,ac,badge,recBadge,modBadge,nameBadge,payItem,ddMenu};
   });
   // Desktop table
-  tbody.innerHTML=rows.map(({e,st,rc,ac,badge,recBadge,modBadge,dot,ddMenu})=>`<tr class="${rc}">
+  tbody.innerHTML=rows.map(({e,st,rc,ac,badge,recBadge,modBadge,nameBadge,ddMenu})=>`<tr class="${rc}">
       <td>${nameBadge}${recBadge}${modBadge}</td>
       <td><span class="cbadge">${esc(e.category)}</span></td>
       <td class="${ac}">${fmtR(e.amount)}</td>
@@ -1024,7 +905,7 @@ function renderTable(){
     </tr>`).join('');
   // Mobile cards
   if(mcardList){
-    mcardList.innerHTML=rows.map(({e,st,badge,recBadge,modBadge,dot,ddMenu})=>`
+    mcardList.innerHTML=rows.map(({e,st,badge,recBadge,modBadge,nameBadge,ddMenu})=>`
       <div class="mcard${st==='overdue'?' mc-overdue':st==='paid'?' mc-paid':''}">
         <div class="mcard-top">
           <div class="mcard-name">${nameBadge}${recBadge}${modBadge}</div>
@@ -1166,9 +1047,8 @@ function setGaugeType(t,el){
 }
 
 function renderAllCharts(){
-  const allInst=periodFilter(S.expenses,'dueDate');
-  const paid=allInst.filter(e=>status(e,e._ym)==='paid');
-  const all=allInst;
+  const paid=periodFilter(S.expenses,'dueDate').filter(e=>status(e,e._ym)==='paid');
+  const all=periodFilter(S.expenses,'dueDate');
   renderStats(all,paid);
   renderLineChart();
   renderBarChart(all);
@@ -1199,21 +1079,17 @@ function renderLineChart(){
     months.push({m,y,label:MONTHS[m].slice(0,3)+'/'+String(y).slice(2)});
   }
   const data=months.map(({m,y})=>{
-    const selM=m,selY=y,selYM=selY*12+selM;
-    const ym_=ymKey(selY,selM);
+    const selYM=y*12+m;
+    const ym_=ymKey(y,m);
     return S.expenses.filter(e=>{
-      if((e.excecoes||{})[ym_]) return false; // exceção para este mês
+      if((e.excecoes||{})[ym_])return false;
       const d=new Date((e.dueDate||e.date||'')+'T00:00:00');
       const eYM=d.getFullYear()*12+d.getMonth();
       const tipo=e.recorrenciaTipo||(e.recorrente?'infinita':'nenhuma');
       if(tipo==='infinita')return selYM>=eYM;
       if(tipo==='parcelada'){const end=eYM+(parseInt(e.recorrenciaMeses)||1)-1;return selYM>=eYM&&selYM<=end;}
       return selYM===eYM;
-    }).reduce((s,e)=>{
-      // Aplica modificação de valor se houver
-      const val = ((e.modificacoes||{})[ym_]?.valor) ?? e.amount;
-      return s + val;
-    },0);
+    }).reduce((s,e)=>s+(((e.modificacoes||{})[ym_]?.valor)??e.amount),0);
   });
   if(charts.line)charts.line.destroy();
   charts.line=new Chart(c,{
@@ -1249,8 +1125,7 @@ function renderPieChart(all){
 
 function renderCompChart(){
   const c=$('compChart');if(!c)return;
-  const meArr=filterByMonth(S.expenses);
-  const me=meArr.filter(e=>status(e,e._ym)==='paid').reduce((s,e)=>s+e.amount,0);
+  const me=filterByMonth(S.expenses).filter(e=>status(e,e._ym)==='paid').reduce((s,e)=>s+e.amount,0);
   const mi=S.investments.reduce((s,i)=>s+i.amount,0);
   const mLabel=MONTHS[S.selectedMonth];
   if(charts.comp)charts.comp.destroy();
@@ -1428,7 +1303,7 @@ function renderScore(){
    EXPORT
 ═══════════════════════════════════════════════════════════ */
 function exportCSV(){
-  const rows=S.expenses.map(e=>[e.name,e.category,e.amount.toFixed(2),e.dueDate||'',status(e)]);
+  const rows=S.expenses.map(e=>[e.name,e.category,e.amount.toFixed(2),e.dueDate||'',status(e,currentYM())]);
   const csv=[['Nome','Categoria','Valor','Vencimento','Status'],...rows].map(r=>r.map(v=>`"${v}"`).join(',')).join('\n');
   dl('finflow_gastos.csv',csv,'text/csv');closeModal('mov-exp-modal');
 }
@@ -1457,63 +1332,35 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')$$('.mov').forEach(m
 
 /* ═══════════════════════════════════════════════════════════
    SWIPE ENTRE MESES (mobile)
-   Arrastar horizontalmente na área de conteúdo troca o mês.
-   Só ativa em telas ≤768px e quando a aba de lançamentos está ativa.
 ═══════════════════════════════════════════════════════════ */
 (function initSwipe(){
-  const THRESHOLD = 55;   // px mínimo para considerar swipe
-  const MAX_VERT  = 60;   // px vertical máximo (evita conflito com scroll)
-  let tx=0, ty=0, swiping=false;
-
+  const THRESHOLD=55,MAX_VERT=60;
+  let tx=0,ty=0,swiping=false;
   function onTouchStart(e){
-    if(window.innerWidth > 768) return;
-    const t = e.touches[0];
-    tx = t.clientX; ty = t.clientY; swiping = true;
+    if(window.innerWidth>768)return;
+    tx=e.touches[0].clientX;ty=e.touches[0].clientY;swiping=true;
   }
-
   function onTouchEnd(e){
-    if(!swiping) return;
-    swiping = false;
-    const t = e.changedTouches[0];
-    const dx = t.clientX - tx;
-    const dy = Math.abs(t.clientY - ty);
-    if(Math.abs(dx) < THRESHOLD || dy > MAX_VERT) return;
-
-    // Só troca mês se a aba de lançamentos estiver visível
-    const tabActive = $('tab-lancamentos');
-    if(!tabActive || !tabActive.classList.contains('active')) return;
-
-    // Swipe esquerda → próximo mês | direita → mês anterior
-    if(dx < 0){
-      // avança
-      let m = S.selectedMonth + 1, y = S.selectedYear;
-      if(m > 11){ m = 0; y++; }
-      S.selectedMonth = m; S.selectedYear = y;
-    } else {
-      // recua
-      let m = S.selectedMonth - 1, y = S.selectedYear;
-      if(m < 0){ m = 11; y--; }
-      S.selectedMonth = m; S.selectedYear = y;
-    }
+    if(!swiping)return;swiping=false;
+    const dx=e.changedTouches[0].clientX-tx;
+    const dy=Math.abs(e.changedTouches[0].clientY-ty);
+    if(Math.abs(dx)<THRESHOLD||dy>MAX_VERT)return;
+    const tab=$('tab-lancamentos');
+    if(!tab||!tab.classList.contains('active'))return;
+    if(dx<0){let m=S.selectedMonth+1,y=S.selectedYear;if(m>11){m=0;y++;}S.selectedMonth=m;S.selectedYear=y;}
+    else{let m=S.selectedMonth-1,y=S.selectedYear;if(m<0){m=11;y--;}S.selectedMonth=m;S.selectedYear=y;}
     _applyDateFilter();
-    _flashMonthBar();
+    const bar=$('mbar-wrap');if(!bar)return;
+    bar.style.transition='opacity .1s';bar.style.opacity='0.4';
+    setTimeout(()=>{bar.style.opacity='1';},120);
   }
-
-  // Feedback visual: pisca brevemente a barra de meses
-  function _flashMonthBar(){
-    const bar = $('mbar-wrap');
-    if(!bar) return;
-    bar.style.transition = 'opacity .1s';
-    bar.style.opacity = '0.4';
-    setTimeout(()=>{ bar.style.opacity = '1'; }, 120);
-  }
-
-  // Attaches on the content area to avoid conflito com sidebar/modals
-  document.addEventListener('touchstart', onTouchStart, {passive:true});
-  document.addEventListener('touchend',   onTouchEnd,   {passive:true});
+  document.addEventListener('touchstart',onTouchStart,{passive:true});
+  document.addEventListener('touchend',onTouchEnd,{passive:true});
 })();
 
-
+/* ═══════════════════════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════════════════════ */
 function syncSearchPlaceholder(){
   const inp=$('srch');if(!inp)return;
   inp.placeholder=window.innerWidth<=768?'':'Buscar por nome...';
