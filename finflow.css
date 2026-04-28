@@ -87,6 +87,9 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .btn-green:hover{background:var(--green);color:#fff}
 .btn-sm{padding:5px 9px;font-size:12px}
 .content{padding:22px 24px;flex:1;min-width:0;overflow-x:hidden;max-width:100%}
+@media(max-width:768px){
+  .content{padding-bottom:80px}
+}
 .mbtn{display:none;background:none;border:none;font-size:22px;cursor:pointer;color:var(--text);padding:3px;flex-shrink:0}
 .obg{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:99;display:none}
 .obg.open{display:block}
@@ -96,14 +99,14 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .tab-view.active{display:block}
 @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 
-/* ── ROTATE + ZOOM ANIMATIONS (para transição entre abas no mobile) ─ */
-@keyframes rotateInScale{
-  from{opacity:0;transform:rotate(-15deg) scale(0.85)}
-  to{opacity:1;transform:rotate(0deg) scale(1)}
+/* ── SMOOTH FADE + SLIDE ANIMATIONS (para transição entre abas no mobile) ─ */
+@keyframes fadeInSlideUp{
+  from{opacity:0;transform:translateY(8px)}
+  to{opacity:1;transform:translateY(0)}
 }
-@keyframes rotateOutScale{
-  from{opacity:1;transform:rotate(0deg) scale(1)}
-  to{opacity:0;transform:rotate(15deg) scale(0.85)}
+@keyframes fadeOutSlideDown{
+  from{opacity:1;transform:translateY(0)}
+  to{opacity:0;transform:translateY(8px)}
 }
 @keyframes rotateSwipeOutLeft{
   from{opacity:1;transform:translateX(0) rotate(0deg)}
@@ -113,8 +116,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
   from{opacity:0;transform:translateX(40px) rotate(8deg)}
   to{opacity:1;transform:translateX(0) rotate(0deg)}
 }
-.tab-view.slide-in{animation:rotateInScale .35s cubic-bezier(.35,0,.65,1) !important;display:block !important}
-.tab-view.slide-out{animation:rotateOutScale .35s cubic-bezier(.35,0,.65,1) !important}
+.tab-view.slide-in{animation:fadeInSlideUp .35s cubic-bezier(.35,0,.65,1) !important;display:block !important}
+.tab-view.slide-out{animation:fadeOutSlideDown .35s cubic-bezier(.35,0,.65,1) !important}
 .tab-view.swipe-out{animation:rotateSwipeOutLeft .4s ease-out !important}
 .tab-view.swipe-in{animation:rotateSwipeInRight .4s ease-out !important;display:block !important}
 
