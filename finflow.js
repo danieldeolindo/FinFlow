@@ -1432,31 +1432,26 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')$$('.mov').forEach(m
     const tab=$('tab-lancamentos');
     if(!tab||!tab.classList.contains('active'))return;
     
-    // Aplicar animação ao tab antes de mudar
+    // Aplicar animação ao tab com direção do swipe
     const isSwipeLeft = dx < 0;
-    tab.classList.add(isSwipeLeft ? 'swipe-out' : 'swipe-out');
+    const outClass = isSwipeLeft ? 'swipe-out-left' : 'swipe-out-right';
+    const inClass = isSwipeLeft ? 'swipe-in-right' : 'swipe-in-left';
+    
+    tab.classList.add(outClass);
     
     setTimeout(() => {
+      // Mudar mês
       if(dx<0){let m=S.selectedMonth+1,y=S.selectedYear;if(m>11){m=0;y++;}S.selectedMonth=m;S.selectedYear=y;}
       else{let m=S.selectedMonth-1,y=S.selectedYear;if(m<0){m=11;y--;}S.selectedMonth=m;S.selectedYear=y;}
       
-      // Remover classe de animação e aplicar a de entrada
-      tab.classList.remove('swipe-out');
-      tab.classList.add('swipe-in');
-      
+      tab.classList.remove(outClass);
+      tab.classList.add(inClass);
       _applyDateFilter();
       
       setTimeout(() => {
-        tab.classList.remove('swipe-in');
-      }, 400);
-      
-      // Animar também a barra de meses
-      const bar=$('mbar-wrap');
-      if(!bar)return;
-      bar.style.transition='opacity .2s ease';
-      bar.style.opacity='0.5';
-      setTimeout(()=>{bar.style.opacity='1';bar.style.transition='';},200);
-    }, 200);
+        tab.classList.remove(inClass);
+      }, 300);
+    }, 300);
   }
   document.addEventListener('touchstart',onTouchStart,{passive:true});
   document.addEventListener('touchend',onTouchEnd,{passive:true});

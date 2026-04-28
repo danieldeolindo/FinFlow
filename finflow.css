@@ -108,18 +108,31 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
   from{opacity:1;transform:translateY(0)}
   to{opacity:0;transform:translateY(8px)}
 }
-@keyframes rotateSwipeOutLeft{
-  from{opacity:1;transform:translateX(0) rotate(0deg)}
-  to{opacity:0;transform:translateX(-40px) rotate(-8deg)}
+/* Whip Pan Animations - Movimento lateral rápido sem rotação */
+@keyframes whipOutLeft{
+  from{opacity:1;transform:translateX(0)}
+  to{opacity:0;transform:translateX(-100%)}
 }
-@keyframes rotateSwipeInRight{
-  from{opacity:0;transform:translateX(40px) rotate(8deg)}
-  to{opacity:1;transform:translateX(0) rotate(0deg)}
+@keyframes whipInRight{
+  from{opacity:0;transform:translateX(100%)}
+  to{opacity:1;transform:translateX(0)}
 }
+@keyframes whipOutRight{
+  from{opacity:1;transform:translateX(0)}
+  to{opacity:0;transform:translateX(100%)}
+}
+@keyframes whipInLeft{
+  from{opacity:0;transform:translateX(-100%)}
+  to{opacity:1;transform:translateX(0)}
+}
+/* Tab view animations */
 .tab-view.slide-in{animation:fadeInSlideUp .35s cubic-bezier(.35,0,.65,1) !important;display:block !important}
 .tab-view.slide-out{animation:fadeOutSlideDown .35s cubic-bezier(.35,0,.65,1) !important}
-.tab-view.swipe-out{animation:rotateSwipeOutLeft .4s ease-out !important}
-.tab-view.swipe-in{animation:rotateSwipeInRight .4s ease-out !important;display:block !important}
+/* Swipe animations - Whip pan para meses */
+.tab-view.swipe-out-left{animation:whipOutLeft .3s cubic-bezier(.4,0,.2,1) !important}
+.tab-view.swipe-in-left{animation:whipInLeft .3s cubic-bezier(.4,0,.2,1) !important;display:block !important}
+.tab-view.swipe-out-right{animation:whipOutRight .3s cubic-bezier(.4,0,.2,1) !important}
+.tab-view.swipe-in-right{animation:whipInRight .3s cubic-bezier(.4,0,.2,1) !important;display:block !important}
 
 /* ── CARDS ──────────────────────────────────────────────── */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);transition:background var(--t),border-color var(--t);overflow:hidden;min-width:0;max-width:100%}
