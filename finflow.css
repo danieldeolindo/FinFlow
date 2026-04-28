@@ -128,11 +128,11 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 /* Tab view animations */
 .tab-view.slide-in{animation:fadeInSlideUp .35s cubic-bezier(.35,0,.65,1) !important;display:block !important}
 .tab-view.slide-out{animation:fadeOutSlideDown .35s cubic-bezier(.35,0,.65,1) !important}
-/* Swipe animations - Whip pan para meses */
-.tab-view.swipe-out-left{animation:whipOutLeft .3s cubic-bezier(.4,0,.2,1) !important}
-.tab-view.swipe-in-left{animation:whipInLeft .3s cubic-bezier(.4,0,.2,1) !important;display:block !important}
-.tab-view.swipe-out-right{animation:whipOutRight .3s cubic-bezier(.4,0,.2,1) !important}
-.tab-view.swipe-in-right{animation:whipInRight .3s cubic-bezier(.4,0,.2,1) !important;display:block !important}
+/* Swipe animations - Whip pan para meses - 200ms rápido e dinâmico */
+.tab-view.swipe-out-left{animation:whipOutLeft .2s cubic-bezier(.5,0,.3,1) !important}
+.tab-view.swipe-in-left{animation:whipInLeft .2s cubic-bezier(.5,0,.3,1) !important;display:block !important}
+.tab-view.swipe-out-right{animation:whipOutRight .2s cubic-bezier(.5,0,.3,1) !important}
+.tab-view.swipe-in-right{animation:whipInRight .2s cubic-bezier(.5,0,.3,1) !important;display:block !important}
 
 /* ── CARDS ──────────────────────────────────────────────── */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);transition:background var(--t),border-color var(--t);overflow:hidden;min-width:0;max-width:100%}

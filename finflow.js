@@ -1432,26 +1432,32 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')$$('.mov').forEach(m
     const tab=$('tab-lancamentos');
     if(!tab||!tab.classList.contains('active'))return;
     
-    // Aplicar animação ao tab com direção do swipe
+    // Determinar direção
     const isSwipeLeft = dx < 0;
     const outClass = isSwipeLeft ? 'swipe-out-left' : 'swipe-out-right';
     const inClass = isSwipeLeft ? 'swipe-in-right' : 'swipe-in-left';
     
+    // 1. Primeiro atualizar dados ANTES de animar
+    if(dx<0){let m=S.selectedMonth+1,y=S.selectedYear;if(m>11){m=0;y++;}S.selectedMonth=m;S.selectedYear=y;}
+    else{let m=S.selectedMonth-1,y=S.selectedYear;if(m<0){m=11;y--;}S.selectedMonth=m;S.selectedYear=y;}
+    
+    persist();
+    renderMonthBar();
+    renderTable();
+    checkAlerts();
+    updateScoreBadge();
+    
+    // 2. Depois de atualizar dados, aplicar animação suave
     tab.classList.add(outClass);
     
     setTimeout(() => {
-      // Mudar mês
-      if(dx<0){let m=S.selectedMonth+1,y=S.selectedYear;if(m>11){m=0;y++;}S.selectedMonth=m;S.selectedYear=y;}
-      else{let m=S.selectedMonth-1,y=S.selectedYear;if(m<0){m=11;y--;}S.selectedMonth=m;S.selectedYear=y;}
-      
       tab.classList.remove(outClass);
       tab.classList.add(inClass);
-      _applyDateFilter();
       
       setTimeout(() => {
         tab.classList.remove(inClass);
-      }, 300);
-    }, 300);
+      }, 200);
+    }, 200);
   }
   document.addEventListener('touchstart',onTouchStart,{passive:true});
   document.addEventListener('touchend',onTouchEnd,{passive:true});
