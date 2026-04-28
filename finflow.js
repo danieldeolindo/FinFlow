@@ -395,7 +395,7 @@ function goTab(tab,el){
     oldTab.classList.add('slide-out');
     setTimeout(() => {
       oldTab.classList.remove('slide-out');
-    }, 350);
+    }, 360);
   } else if(oldTab) {
     oldTab.classList.remove('active');
   }
@@ -406,7 +406,7 @@ function goTab(tab,el){
     newTab.classList.add('slide-in');
     setTimeout(() => {
       newTab.classList.remove('slide-in');
-    }, 350);
+    }, 360);
   }
   
   newTab.classList.add('active');

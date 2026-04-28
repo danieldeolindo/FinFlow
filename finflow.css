@@ -86,9 +86,9 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .btn-green{background:var(--green-l);color:var(--green);border:none}
 .btn-green:hover{background:var(--green);color:#fff}
 .btn-sm{padding:5px 9px;font-size:12px}
-.content{padding:22px 24px;flex:1;min-width:0;overflow-x:hidden;max-width:100%}
+.content{padding:22px 24px;flex:1;min-width:0;overflow-x:hidden;max-width:100%;padding-bottom:22px}
 @media(max-width:768px){
-  .content{padding-bottom:80px}
+  .content{padding-bottom:100px !important}
 }
 .mbtn{display:none;background:none;border:none;font-size:22px;cursor:pointer;color:var(--text);padding:3px;flex-shrink:0}
 .obg{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:99;display:none}
