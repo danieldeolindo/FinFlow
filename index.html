@@ -90,6 +90,7 @@
       <div class="ptitle" id="ptitle">Lançamentos</div>
     </div>
     <div class="tactions">
+      <div class="score-mobile-badge" id="scoreBadge" onclick="goToScore()"></div>
       <button class="btn btn-ghost btn-sm" onclick="openExport()">📤 Exportar</button>
       <button class="btn btn-primary btn-sm" id="topAddBtn" onclick="openModal()">+ Novo gasto</button>
     </div>
@@ -284,6 +285,27 @@
     </div>
 
   </div><!-- /content -->
+
+  <!-- ─── FOOTER FIXO MOBILE ─────────────────────────── -->
+  <footer class="mobile-footer" id="mobileFooter">
+    <div class="footer-nav-item" onclick="goTab('lancamentos',this);renderFooterActive()">
+      <span class="footer-icon">📋</span>
+      <span class="footer-label">Lançamentos</span>
+    </div>
+    <div class="footer-nav-item" onclick="goTab('dashboard',this);renderFooterActive()">
+      <span class="footer-icon">📊</span>
+      <span class="footer-label">Dashboard</span>
+    </div>
+    <button class="footer-add-btn" onclick="openModal()">+</button>
+    <div class="footer-nav-item" onclick="goTab('investimentos',this);renderFooterActive()">
+      <span class="footer-icon">📈</span>
+      <span class="footer-label">Investimentos</span>
+    </div>
+    <div class="footer-nav-item" onclick="goTab('metas',this);renderFooterActive()">
+      <span class="footer-icon">🎯</span>
+      <span class="footer-label">Metas</span>
+    </div>
+  </footer>
 </main>
 
 <!-- ═══ MODAL EXPENSE ═══════════════════════════════════ -->

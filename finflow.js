@@ -220,6 +220,7 @@ function enterApp(){
   $('salaryInput').value=S.salary||'';
   $('saveGoalInput').value=S.saveGoalPct||'';
   fillCatSelects();genRecurring();renderMonthBar();renderTable();renderInvTable();checkAlerts();
+  updateScoreBadge();
 }
 
 /* Observa mudança de autenticação — substitui checkSession() */
@@ -355,7 +356,8 @@ function _applyDateFilter(){
   checkAlerts();
   if($('tab-dashboard')&&$('tab-dashboard').classList.contains('active')){destroyAll();renderAllCharts()}
   if($('tab-metas')&&$('tab-metas').classList.contains('active'))renderMeta();
-  if($('tab-score')&&$('tab-score').classList.contains('active'))renderScore();
+  if($('tab-score')&&$('tab-score').classList.contains('active')){renderScore();updateScoreBadge()}
+  updateScoreBadge();
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -383,17 +385,98 @@ const closeSB=()=>{$('sidebar').classList.remove('open');$('obg').classList.remo
 ═══════════════════════════════════════════════════════════ */
 function goTab(tab,el){
   $$('.nitem').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');
-  $$('.tab-view').forEach(v=>v.classList.remove('active'));
-  $('tab-'+tab).classList.add('active');
+  
+  const isMobile = window.innerWidth <= 768;
+  const oldTab = $$('.tab-view.active')[0];
+  
+  // Aplicar animação de saída no tab antigo (se mobile)
+  if(isMobile && oldTab) {
+    oldTab.classList.remove('active');
+    oldTab.classList.add('slide-out');
+    setTimeout(() => {
+      oldTab.classList.remove('slide-out');
+    }, 350);
+  } else if(oldTab) {
+    oldTab.classList.remove('active');
+  }
+  
+  // Aplicar animação de entrada no tab novo (se mobile)
+  const newTab = $('tab-'+tab);
+  if(isMobile && newTab) {
+    newTab.classList.add('slide-in');
+    setTimeout(() => {
+      newTab.classList.remove('slide-in');
+    }, 350);
+  }
+  
+  newTab.classList.add('active');
+  
   const titles={lancamentos:'Lançamentos',dashboard:'Dashboard',investimentos:'Investimentos',metas:'Metas',score:'Score'};
   $('ptitle').textContent=titles[tab]||tab;
   const topBtn=$('topAddBtn');
   if(topBtn){topBtn.style.display=tab==='lancamentos'?'':'none'}
   closeSB();
+  renderFooterActive(tab);
   if(tab==='dashboard'){destroyAll();renderAllCharts()}
   if(tab==='investimentos'){renderInvTable();renderInvCharts()}
   if(tab==='metas'){renderMeta()}
-  if(tab==='score')renderScore();
+  if(tab==='score'){renderScore();updateScoreBadge()}
+}
+
+/* ─── Sincroniza item ativo do footer com a página atual ─── */
+function renderFooterActive(tab){
+  if(window.innerWidth > 768) return; // Apenas mobile
+  const footerItems = $$('.footer-nav-item');
+  footerItems.forEach(item => item.classList.remove('active'));
+  
+  const tabMap = {
+    'lancamentos': 0,
+    'dashboard': 1,
+    'investimentos': 3,
+    'metas': 4
+  };
+  
+  const idx = tabMap[tab];
+  if(idx !== undefined && footerItems[idx]) {
+    footerItems[idx].classList.add('active');
+  }
+}
+
+/* ─── Função para navegar ao Score (usado pelo badge) ─── */
+function goToScore(){
+  goTab('score', null);
+}
+
+/* ─── Atualiza o Score badge no header mobile ─── */
+function updateScoreBadge(){
+  const badge = $('scoreBadge');
+  if(!badge) return;
+  
+  if(!S.expenses.length) {
+    badge.textContent = '⭐ --';
+    return;
+  }
+  
+  const me = monthlyExpenses();
+  const spent = me.filter(e => status(e, e._ym) === 'paid').reduce((s, e) => s + e.amount, 0);
+  const ov = filterByMonth(S.expenses).filter(e => status(e, e._ym) === 'overdue');
+  
+  let gScore = 100;
+  if(S.goal && spent > 0) gScore = Math.max(0, 100 - ((spent / S.goal - 0.5) * 100));
+  
+  const lux = me.filter(e => ['Lazer', 'Vestuário'].includes(e.category)).reduce((s, e) => s + e.amount, 0);
+  const lScore = spent > 0 ? Math.max(0, 100 - (lux / spent) * 150) : 100;
+  
+  const days = [...new Set(me.map(e => e.dueDate || e.date))].length;
+  const rScore = Math.min(100, days * 5);
+  
+  const ovScore = Math.max(0, 100 - ov.length * 20);
+  
+  const invScore = S.investments.length ? Math.min(100, S.investments.length * 10 + ((S.investments.reduce((s, i) => s + i.amount, 0) / (S.salary || 1)) * 20)) : 50;
+  
+  const score = Math.round(gScore * 0.35 + lScore * 0.2 + rScore * 0.1 + ovScore * 0.2 + invScore * 0.15);
+  
+  badge.textContent = `⭐ ${score}`;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -638,6 +721,7 @@ function _closeExpModal(){
   const recRow=$('inp-rec')&&$('inp-rec').closest('.fg');
   if(recRow)recRow.style.display='';
   S.editExpId=null;S.editExpYM=null;
+  updateScoreBadge();
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -655,7 +739,7 @@ async function markPaid(id){
   if(isRec)delete e.paid;
   else e.paid=e.pagamentos[ym];
   await persistExpense(e);
-  renderTable();checkAlerts();
+  renderTable();checkAlerts();updateScoreBadge();
 }
 
 function editExp(id){
@@ -676,7 +760,7 @@ async function _delExpFull(id){
   if(!confirm('Excluir este lançamento?'))return;
   S.expenses=S.expenses.filter(e=>e.id!==id);
   await deleteExpense(id);
-  renderTable();checkAlerts();
+  renderTable();checkAlerts();updateScoreBadge();
   if($('tab-dashboard').classList.contains('active')){destroyAll();renderAllCharts()}
 }
 
@@ -686,7 +770,7 @@ async function _delExpMonth(id){
   if(!S.expenses[i].excecoes)S.expenses[i].excecoes={};
   S.expenses[i].excecoes[ym]=true;
   await persistExpense(S.expenses[i]);
-  renderTable();checkAlerts();
+  renderTable();checkAlerts();updateScoreBadge();
   if($('tab-dashboard').classList.contains('active')){destroyAll();renderAllCharts()}
 }
 
@@ -1347,12 +1431,32 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')$$('.mov').forEach(m
     if(Math.abs(dx)<THRESHOLD||dy>MAX_VERT)return;
     const tab=$('tab-lancamentos');
     if(!tab||!tab.classList.contains('active'))return;
-    if(dx<0){let m=S.selectedMonth+1,y=S.selectedYear;if(m>11){m=0;y++;}S.selectedMonth=m;S.selectedYear=y;}
-    else{let m=S.selectedMonth-1,y=S.selectedYear;if(m<0){m=11;y--;}S.selectedMonth=m;S.selectedYear=y;}
-    _applyDateFilter();
-    const bar=$('mbar-wrap');if(!bar)return;
-    bar.style.transition='opacity .1s';bar.style.opacity='0.4';
-    setTimeout(()=>{bar.style.opacity='1';},120);
+    
+    // Aplicar animação ao tab antes de mudar
+    const isSwipeLeft = dx < 0;
+    tab.classList.add(isSwipeLeft ? 'swipe-out' : 'swipe-out');
+    
+    setTimeout(() => {
+      if(dx<0){let m=S.selectedMonth+1,y=S.selectedYear;if(m>11){m=0;y++;}S.selectedMonth=m;S.selectedYear=y;}
+      else{let m=S.selectedMonth-1,y=S.selectedYear;if(m<0){m=11;y--;}S.selectedMonth=m;S.selectedYear=y;}
+      
+      // Remover classe de animação e aplicar a de entrada
+      tab.classList.remove('swipe-out');
+      tab.classList.add('swipe-in');
+      
+      _applyDateFilter();
+      
+      setTimeout(() => {
+        tab.classList.remove('swipe-in');
+      }, 400);
+      
+      // Animar também a barra de meses
+      const bar=$('mbar-wrap');
+      if(!bar)return;
+      bar.style.transition='opacity .2s ease';
+      bar.style.opacity='0.5';
+      setTimeout(()=>{bar.style.opacity='1';bar.style.transition='';},200);
+    }, 200);
   }
   document.addEventListener('touchstart',onTouchStart,{passive:true});
   document.addEventListener('touchend',onTouchEnd,{passive:true});
@@ -1379,7 +1483,7 @@ Object.assign(window, {
   // Auth
   doLogin, doRegister, doLogout, swLoginTab, toggleTheme,
   // Navigation
-  goTab, openSB, closeSB, openExport,
+  goTab, goToScore, openSB, closeSB, openExport, renderFooterActive, updateScoreBadge,
   // Modals
   openModal, openInvModal, closeModal,
   // Expense
