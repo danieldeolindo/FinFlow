@@ -86,7 +86,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .btn-green{background:var(--green-l);color:var(--green);border:none}
 .btn-green:hover{background:var(--green);color:#fff}
 .btn-sm{padding:5px 9px;font-size:12px}
-.content{padding:22px 24px;flex:1;min-width:0;overflow-x:hidden;max-width:100%;padding-bottom:22px}
+.content{position:relative;padding:22px 24px;flex:1;min-width:0;overflow-x:hidden;max-width:100%;padding-bottom:22px}
 @media(max-width:768px){
   .content{padding-bottom:100px !important}
 }
@@ -95,7 +95,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .obg.open{display:block}
 
 /* ── TABS ───────────────────────────────────────────────── */
-.tab-view{display:none;animation:fadeUp .25s ease}
+.tab-view{display:none}
 .tab-view.active{display:block}
 @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 
@@ -126,13 +126,13 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
   to{opacity:1;transform:translateX(0)}
 }
 /* Tab view animations */
-.tab-view.slide-in{animation:fadeInSlideUp .35s cubic-bezier(.35,0,.65,1) !important;display:block !important}
-.tab-view.slide-out{animation:fadeOutSlideDown .35s cubic-bezier(.35,0,.65,1) !important}
+.tab-view.slide-in{animation:fadeInSlideUp .35s cubic-bezier(.35,0,.65,1) !important;display:block !important;position:relative;z-index:2}
+.tab-view.slide-out{animation:fadeOutSlideDown .35s cubic-bezier(.35,0,.65,1) !important;display:block !important;position:absolute;top:0;left:0;right:0;z-index:1}
 /* Swipe animations - Whip pan para meses - 200ms rápido e dinâmico */
-.tab-view.swipe-out-left{animation:whipOutLeft .2s cubic-bezier(.5,0,.3,1) !important}
-.tab-view.swipe-in-left{animation:whipInLeft .2s cubic-bezier(.5,0,.3,1) !important;display:block !important}
-.tab-view.swipe-out-right{animation:whipOutRight .2s cubic-bezier(.5,0,.3,1) !important}
-.tab-view.swipe-in-right{animation:whipInRight .2s cubic-bezier(.5,0,.3,1) !important;display:block !important}
+.tab-view.swipe-out-left{animation:whipOutLeft .2s cubic-bezier(.5,0,.3,1) !important;display:block !important;position:absolute;top:0;left:0;right:0;z-index:1}
+.tab-view.swipe-in-left{animation:whipInLeft .2s cubic-bezier(.5,0,.3,1) !important;display:block !important;position:relative;z-index:2}
+.tab-view.swipe-out-right{animation:whipOutRight .2s cubic-bezier(.5,0,.3,1) !important;display:block !important;position:absolute;top:0;left:0;right:0;z-index:1}
+.tab-view.swipe-in-right{animation:whipInRight .2s cubic-bezier(.5,0,.3,1) !important;display:block !important;position:relative;z-index:2}
 
 /* ── CARDS ──────────────────────────────────────────────── */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);transition:background var(--t),border-color var(--t);overflow:hidden;min-width:0;max-width:100%}

@@ -387,31 +387,47 @@ function goTab(tab,el){
   $$('.nitem').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');
   
   const isMobile = window.innerWidth <= 768;
-  const oldTab = $$('.tab-view.active')[0];
-  
-  // Aplicar animação de saída no tab antigo (se mobile)
-  if(isMobile && oldTab) {
-    oldTab.classList.remove('active');
-    oldTab.classList.add('slide-out');
-    setTimeout(() => {
-      oldTab.classList.remove('slide-out');
-    }, 360);
-  } else if(oldTab) {
-    oldTab.classList.remove('active');
-  }
-  
-  // Aplicar animação de entrada no tab novo (se mobile)
+  const oldTab = document.querySelector('.tab-view.active');
   const newTab = $('tab-'+tab);
-  if(isMobile && newTab) {
-    newTab.classList.add('slide-in');
-    setTimeout(() => {
-      newTab.classList.remove('slide-in');
-    }, 360);
-  }
-  
-  newTab.classList.add('active');
-  
   const titles={lancamentos:'Lançamentos',dashboard:'Dashboard',investimentos:'Investimentos',metas:'Metas',score:'Score'};
+
+  if(!newTab) return;
+  if(oldTab===newTab){
+    $('ptitle').textContent=titles[tab]||tab;
+    if(tab==='dashboard'){destroyAll();renderAllCharts()}
+    if(tab==='investimentos'){renderInvTable();renderInvCharts()}
+    if(tab==='metas'){renderMeta()}
+    if(tab==='score'){renderScore();updateScoreBadge()}
+    closeSB();
+    renderFooterActive(tab);
+    const topBtn=$('topAddBtn'); if(topBtn){topBtn.style.display=tab==='lancamentos'?'':'none'}
+    return;
+  }
+
+  if(isMobile && oldTab){
+    oldTab.classList.remove('slide-in','slide-out');
+    oldTab.classList.add('slide-out');
+    const cleanupOld = () => {
+      oldTab.classList.remove('slide-out','active');
+      oldTab.removeEventListener('animationend',cleanupOld);
+    };
+    oldTab.addEventListener('animationend',cleanupOld);
+  } else if(oldTab){
+    oldTab.classList.remove('active');
+  }
+
+  newTab.classList.remove('slide-in','slide-out','swipe-in-left','swipe-in-right','swipe-out-left','swipe-out-right');
+  newTab.classList.add('active');
+
+  if(isMobile){
+    newTab.classList.add('slide-in');
+    const cleanupNew = () => {
+      newTab.classList.remove('slide-in');
+      newTab.removeEventListener('animationend',cleanupNew);
+    };
+    newTab.addEventListener('animationend',cleanupNew);
+  }
+
   $('ptitle').textContent=titles[tab]||tab;
   const topBtn=$('topAddBtn');
   if(topBtn){topBtn.style.display=tab==='lancamentos'?'':'none'}
@@ -1448,16 +1464,20 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')$$('.mov').forEach(m
     updateScoreBadge();
     
     // 2. Depois de atualizar dados, aplicar animação suave
+    tab.classList.remove('swipe-in-left','swipe-in-right','swipe-out-left','swipe-out-right');
     tab.classList.add(outClass);
-    
-    setTimeout(() => {
+
+    const cleanupOut = () => {
       tab.classList.remove(outClass);
+      tab.removeEventListener('animationend',cleanupOut);
       tab.classList.add(inClass);
-      
-      setTimeout(() => {
+      const cleanupIn = () => {
         tab.classList.remove(inClass);
-      }, 200);
-    }, 200);
+        tab.removeEventListener('animationend',cleanupIn);
+      };
+      tab.addEventListener('animationend',cleanupIn);
+    };
+    tab.addEventListener('animationend',cleanupOut);
   }
   document.addEventListener('touchstart',onTouchStart,{passive:true});
   document.addEventListener('touchend',onTouchEnd,{passive:true});
