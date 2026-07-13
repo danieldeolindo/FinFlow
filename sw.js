@@ -1,5 +1,5 @@
 /* FinFlow — Service Worker */
-const CACHE = "finflow-v1";
+const CACHE = "finflow-v2";
 const STATIC = [
   "/",
   "/index.html",

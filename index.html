@@ -67,6 +67,10 @@
       <div class="nitem" onclick="goTab('score',this)"><span class="nicon">⭐</span>Score</div>
     </div>
     <div class="nsect">
+      <div class="nlabel">Empréstimos</div>
+      <div class="nitem" onclick="goTab('emprestimos',this)"><span class="nicon">🤝</span>Dinheiro Emprestado</div>
+    </div>
+    <div class="nsect">
       <div class="nlabel">Ferramentas</div>
       <div class="nitem" onclick="openExport()"><span class="nicon">📤</span>Exportar</div>
     </div>
@@ -284,6 +288,76 @@
       </div>
     </div>
 
+    <!-- ─── EMPRÉSTIMOS (módulo independente do financeiro —
+         "app dentro do app": dados, estado e coleção próprios,
+         nada aqui lê ou depende de expenses/investments) ──── -->
+    <div class="tab-view" id="tab-emprestimos">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+        <button class="btn btn-primary btn-sm" onclick="openLoanModal()">+ Novo empréstimo</button>
+      </div>
+
+      <!-- Resumo -->
+      <div class="sgrid" id="lo-sgrid" style="margin-bottom:16px"></div>
+
+      <!-- Navegação mês/ano das parcelas -->
+      <div class="mbar-wrap" id="lo-mbar-wrap">
+        <div class="mbar-year" id="lo-mbar-year"></div>
+        <div class="mbar" id="lo-mbar" role="tablist" aria-label="Filtro por mês"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="ctitle">📆 Parcelas do mês</div>
+        <div class="twrap">
+          <table class="dtable">
+            <thead>
+              <tr>
+                <th>Pessoa</th>
+                <th>Parcela</th>
+                <th>Valor</th>
+                <th>Vencimento</th>
+                <th>Status</th>
+                <th>Opções</th>
+              </tr>
+            </thead>
+            <tbody id="lo-tbody"></tbody>
+          </table>
+          <div id="empty-lo-month" class="empty" style="display:none">
+            <div class="empty-ico">📆</div>
+            <div class="empty-title">Nenhuma parcela neste mês</div>
+            <div style="font-size:12px">Navegue por outro mês ou cadastre um novo empréstimo</div>
+          </div>
+        </div>
+        <div class="mcard-list" id="mcard-lo-month"></div>
+      </div>
+
+      <!-- Lista de empréstimos ativos -->
+      <div class="card">
+        <div class="ctitle">🤝 Empréstimos cadastrados</div>
+        <div class="twrap">
+          <table class="dtable">
+            <thead>
+              <tr>
+                <th>Pessoa</th>
+                <th>Valor emprestado</th>
+                <th>Juros</th>
+                <th>Parcelas</th>
+                <th>Progresso</th>
+                <th>Opções</th>
+              </tr>
+            </thead>
+            <tbody id="lo-loans-tbody"></tbody>
+          </table>
+          <div id="empty-lo" class="empty" style="display:none">
+            <div class="empty-ico">🤝</div>
+            <div class="empty-title">Nenhum empréstimo cadastrado</div>
+            <div style="font-size:12px">Clique em "+ Novo empréstimo" para começar</div>
+          </div>
+        </div>
+        <div class="mcard-list" id="mcard-lo-loans"></div>
+      </div>
+    </div>
+
+
   </div><!-- /content -->
 
   <!-- ─── FOOTER FIXO MOBILE ─────────────────────────── -->
@@ -402,6 +476,71 @@
     <div class="mactions">
       <button class="btn btn-ghost" onclick="closeModal('mov-inv')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveInvestment()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL EMPRÉSTIMO (módulo independente do financeiro) ═ -->
+<div class="mov" id="mov-loan">
+  <div class="modal">
+    <div class="mtitle" id="mlo-title">Novo Empréstimo</div>
+    <div style="display:flex;flex-direction:column;gap:13px">
+      <div class="fg">
+        <label class="flabel">Nome da pessoa</label>
+        <input type="text" class="fc" id="lo-inp-name" placeholder="ex: João Silva">
+      </div>
+      <div class="fgrid" style="gap:13px">
+        <div class="fg">
+          <label class="flabel">Valor emprestado (R$)</label>
+          <input type="number" class="fc" id="lo-inp-val" placeholder="0,00" min="0" step="0.01" oninput="updateLoanPreview()">
+        </div>
+        <div class="fg">
+          <label class="flabel">Taxa de juros (% ao mês)</label>
+          <input type="number" class="fc" id="lo-inp-rate" placeholder="ex: 2" min="0" step="0.01" oninput="updateLoanPreview()">
+        </div>
+      </div>
+      <div class="fgrid" style="gap:13px">
+        <div class="fg">
+          <label class="flabel">Número de parcelas</label>
+          <input type="number" class="fc" id="lo-inp-parcelas" placeholder="ex: 6" min="1" max="360" step="1" oninput="updateLoanPreview()">
+        </div>
+        <div class="fg">
+          <label class="flabel">Data da 1ª parcela</label>
+          <input type="date" class="fc" id="lo-inp-date" oninput="updateLoanPreview()">
+        </div>
+      </div>
+
+      <button type="button" class="btn btn-ghost btn-sm" id="lo-custom-toggle-btn" onclick="toggleLoanCustomValues()" style="width:100%">🔀 Parcelas com valores diferentes</button>
+
+      <div id="lo-custom-wrap" style="display:none;flex-direction:column;gap:10px;border:1.5px solid var(--border);border-radius:10px;padding:12px">
+        <div id="lo-custom-list" style="display:flex;flex-direction:column;gap:10px;max-height:240px;overflow-y:auto;padding-right:4px"></div>
+        <div id="lo-custom-total" style="font-size:12.5px;color:var(--muted);font-weight:600"></div>
+      </div>
+
+      <div id="lo-preview" style="font-size:12.5px;color:var(--muted)"></div>
+    </div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeModal('mov-loan')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveLoan()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL VALOR INDIVIDUAL DA PARCELA (empréstimos) ═ -->
+<div class="mov" id="mov-loan-inst">
+  <div class="modal" style="max-width:380px">
+    <div class="mtitle">Editar valor da parcela</div>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:14px" id="mli-info"></p>
+    <div class="fg">
+      <label class="flabel">Valor (R$)</label>
+      <input type="number" class="fc" id="lo-inst-val" placeholder="0,00" min="0" step="0.01">
+    </div>
+    <div class="mactions" id="lo-inst-reset-row" style="justify-content:space-between;display:none">
+      <button class="btn btn-ghost" onclick="resetLoanInstValue()">↩ Restaurar valor original</button>
+    </div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeModal('mov-loan-inst')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveLoanInstValue()">Salvar</button>
     </div>
   </div>
 </div>

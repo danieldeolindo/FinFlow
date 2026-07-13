@@ -62,6 +62,9 @@ const MONTHS=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Ago
 ═══════════════════════════════════════════════════════════ */
 let S={
   expenses:[],investments:[],categories:[...DEFCATS],
+  loans:[],editLoanId:null,_editInstLoanId:null,_editInstIndex:null,
+  loanCustomMode:false,loanCustomRemoved:false,loanCustomValues:{},
+  loSelectedMonth:new Date().getMonth(),loSelectedYear:new Date().getFullYear(),
   editExpId:null,editInvId:null,editExpYM:null,
   sortField:null,sortDir:1,
   period:'month',gaugeType:'ring',
@@ -123,6 +126,20 @@ async function deleteInvestment(id) {
   catch(e) { console.warn('deleteInvestment error', e); }
 }
 
+/* ── EMPRÉSTIMOS — módulo independente do financeiro ─────
+   Coleção própria (loans), sem nenhum campo ou referência
+   a expenses/investments. */
+async function persistLoan(loan) {
+  if (!auth.currentUser) return;
+  try { await setDoc(uDoc('loans', loan.id), loan); }
+  catch(e) { console.warn('persistLoan error', e); }
+}
+async function deleteLoanDoc(id) {
+  if (!auth.currentUser) return;
+  try { await deleteDoc(uDoc('loans', id)); }
+  catch(e) { console.warn('deleteLoanDoc error', e); }
+}
+
 /* Carrega todos os dados do Firestore para o estado S */
 async function loadUD() {
   if (!auth.currentUser) return;
@@ -145,6 +162,9 @@ async function loadUD() {
     // Investimentos
     const invSnap = await getDocs(uCol('investments'));
     S.investments = invSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Empréstimos (independente do financeiro)
+    const loSnap = await getDocs(uCol('loans'));
+    S.loans = loSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   } catch(e) { console.warn('loadUD error', e); }
 }
 
@@ -203,6 +223,8 @@ async function doLogout(){
   // Resetar estado local
   S.expenses=[];S.investments=[];S.categories=[...DEFCATS];
   S.goal=null;S.salary=null;S.saveGoalPct=null;S.user=null;
+  S.loans=[];S.editLoanId=null;
+  S.loSelectedMonth=new Date().getMonth();S.loSelectedYear=new Date().getFullYear();
   S.selectedMonth=new Date().getMonth();S.selectedYear=new Date().getFullYear();
   await signOut(auth);
   $('appMain').style.display='none';
@@ -220,6 +242,7 @@ function enterApp(){
   $('salaryInput').value=S.salary||'';
   $('saveGoalInput').value=S.saveGoalPct||'';
   fillCatSelects();genRecurring();renderMonthBar();renderTable();renderInvTable();checkAlerts();
+  renderEmprestimos();
   updateScoreBadge();
 }
 
@@ -389,7 +412,7 @@ function goTab(tab,el){
   const isMobile = window.innerWidth <= 768;
   const oldTab = document.querySelector('.tab-view.active');
   const newTab = $('tab-'+tab);
-  const titles={lancamentos:'Lançamentos',dashboard:'Dashboard',investimentos:'Investimentos',metas:'Metas',score:'Score'};
+  const titles={lancamentos:'Lançamentos',dashboard:'Dashboard',investimentos:'Investimentos',metas:'Metas',score:'Score',emprestimos:'Empréstimos'};
 
   if(!newTab) return;
   if(oldTab===newTab){
@@ -398,6 +421,7 @@ function goTab(tab,el){
     if(tab==='investimentos'){renderInvTable();renderInvCharts()}
     if(tab==='metas'){renderMeta()}
     if(tab==='score'){renderScore();updateScoreBadge()}
+    if(tab==='emprestimos'){renderEmprestimos()}
     closeSB();
     renderFooterActive(tab);
     const topBtn=$('topAddBtn'); if(topBtn){topBtn.style.display=tab==='lancamentos'?'':'none'}
@@ -437,6 +461,7 @@ function goTab(tab,el){
   if(tab==='investimentos'){renderInvTable();renderInvCharts()}
   if(tab==='metas'){renderMeta()}
   if(tab==='score'){renderScore();updateScoreBadge()}
+  if(tab==='emprestimos'){renderEmprestimos()}
 }
 
 /* ─── Sincroniza item ativo do footer com a página atual ─── */
@@ -899,6 +924,440 @@ async function delInv(id){
 }
 
 /* ═══════════════════════════════════════════════════════════
+   EMPRÉSTIMOS — módulo independente do financeiro
+   "app dentro do app": nenhuma função abaixo lê ou escreve em
+   S.expenses/S.investments, nem usa o mês/ano do financeiro
+   (S.selectedMonth/selectedYear). Estado, navegação e coleção
+   (loans) são inteiramente próprios deste módulo.
+═══════════════════════════════════════════════════════════ */
+
+/* Valor da parcela fixa (sistema Price — juros compostos).
+   Se a taxa for 0, divide o valor igualmente entre as parcelas. */
+function loanInstallmentValue(principal,ratePct,n){
+  const i=(ratePct||0)/100;
+  if(!i) return principal/n;
+  return principal*i/(1-Math.pow(1+i,-n));
+}
+
+/* Gera a lista de parcelas (datas + valores) de um empréstimo.
+   Cada parcela pode ter o valor sobrescrito individualmente via
+   loan.overrides[index] (editável pelo usuário mês a mês). */
+function loanInstallments(loan){
+  const n=loan.installments;
+  const pmt=loanInstallmentValue(loan.principal,loan.rate,n);
+  const start=new Date((loan.startDate||today())+'T00:00:00');
+  const list=[];
+  for(let k=0;k<n;k++){
+    const d=new Date(start.getFullYear(),start.getMonth()+k,start.getDate());
+    const dueDate=d.toISOString().split('T')[0];
+    const paid=!!((loan.payments||{})[k+1]);
+    const ov=(loan.overrides||{})[k+1];
+    const amount=(ov&&ov.amount!=null)?ov.amount:pmt;
+    list.push({loanId:loan.id,personName:loan.personName,index:k+1,total:n,amount,defaultAmount:pmt,overridden:!!ov,dueDate,paid});
+  }
+  return list;
+}
+function loanInstallmentStatus(inst){
+  if(inst.paid)return'paid';
+  return inst.dueDate<today()?'overdue':'pending';
+}
+
+/* Prévia ao vivo no modal enquanto o usuário preenche os campos */
+function updateLoanPreview(){
+  const prev=$('lo-preview');if(!prev)return;
+  if(S.loanCustomMode){
+    prev.textContent='';
+    renderLoanCustomValues();
+    return;
+  }
+  const val=parseFloat($('lo-inp-val').value);
+  const rate=parseFloat($('lo-inp-rate').value)||0;
+  const n=parseInt($('lo-inp-parcelas').value);
+  if(!val||!n||val<=0||n<=0){prev.textContent='';return}
+  const pmt=loanInstallmentValue(val,rate,n);
+  const total=pmt*n;
+  prev.innerHTML=`${n}x de <b>${fmtR(pmt)}</b> — total a receber: <b>${fmtR(total)}</b>${rate?` (juros: ${fmtR(total-val)})`:''}`;
+}
+
+/* ── Parcelas com valores diferentes ──────────────────────
+   Alterna o modo de digitação manual de cada parcela: em vez
+   do valor fixo calculado automaticamente, o usuário informa
+   o valor de cada mês individualmente (armazenado via o mesmo
+   mecanismo de loan.overrides usado na edição pós-criação). */
+function toggleLoanCustomValues(){
+  const btn=$('lo-custom-toggle-btn'),wrap=$('lo-custom-wrap');
+  if(!S.loanCustomMode){
+    const n=parseInt($('lo-inp-parcelas').value);
+    const startDate=$('lo-inp-date').value;
+    if(!n||n<1){alert('Informe a quantidade de parcelas antes de definir valores diferentes.');$('lo-inp-parcelas').focus();return}
+    if(!startDate){alert('Informe a data da 1ª parcela antes de definir valores diferentes.');$('lo-inp-date').focus();return}
+    S.loanCustomMode=true;
+    S.loanCustomRemoved=false;
+    wrap.style.display='flex';
+    btn.textContent='✖ Remover valores diferentes';
+    renderLoanCustomValues();
+    $('lo-preview').textContent='';
+  }else{
+    if(!confirm('Remover os valores diferentes definidos e voltar ao cálculo automático das parcelas?'))return;
+    S.loanCustomMode=false;
+    S.loanCustomRemoved=true;
+    S.loanCustomValues={};
+    wrap.style.display='none';
+    $('lo-custom-list').innerHTML='';
+    $('lo-custom-total').textContent='';
+    btn.textContent='🔀 Parcelas com valores diferentes';
+    updateLoanPreview();
+  }
+}
+
+/* Gera os campos de valor, um por parcela, respeitando a
+   quantidade de parcelas e a data da 1ª parcela já preenchidas.
+   Preserva valores já digitados ao regerar a lista (ex: quando
+   o usuário muda a quantidade de parcelas). */
+function renderLoanCustomValues(){
+  const list=$('lo-custom-list');if(!list)return;
+  const n=parseInt($('lo-inp-parcelas').value)||0;
+  const startDate=$('lo-inp-date').value;
+  const val=parseFloat($('lo-inp-val').value)||0;
+  const rate=parseFloat($('lo-inp-rate').value)||0;
+  const pmt=(val&&n)?loanInstallmentValue(val,rate,n):0;
+  const start=startDate?new Date(startDate+'T00:00:00'):null;
+  S.loanCustomValues=S.loanCustomValues||{};
+  if(!n){list.innerHTML='<div style="font-size:12.5px;color:var(--muted)">Informe a quantidade de parcelas.</div>';$('lo-custom-total').textContent='';return}
+  let html='';
+  for(let k=1;k<=n;k++){
+    let dueLabel='';
+    if(start){
+      const d=new Date(start.getFullYear(),start.getMonth()+(k-1),start.getDate());
+      dueLabel=` — vence ${fmtD(d.toISOString().split('T')[0])}`;
+    }
+    if(S.loanCustomValues[k]==null)S.loanCustomValues[k]=pmt?Number(pmt.toFixed(2)):null;
+    const defaultVal=S.loanCustomValues[k]!=null?S.loanCustomValues[k]:'';
+    html+=`<div class="fg" style="gap:4px">
+      <label class="flabel">Parcela ${k}/${n}${dueLabel}</label>
+      <input type="number" class="fc" min="0" step="0.01" data-idx="${k}" value="${defaultVal}" oninput="updateLoanCustomValue(this)">
+    </div>`;
+  }
+  list.innerHTML=html;
+  updateLoanCustomTotal();
+}
+
+function updateLoanCustomValue(el){
+  const k=parseInt(el.dataset.idx);
+  const v=parseFloat(el.value);
+  S.loanCustomValues[k]=isNaN(v)?null:v;
+  updateLoanCustomTotal();
+}
+
+function updateLoanCustomTotal(){
+  const totalEl=$('lo-custom-total');if(!totalEl)return;
+  const n=parseInt($('lo-inp-parcelas').value)||0;
+  let total=0;
+  for(let k=1;k<=n;k++)total+=(S.loanCustomValues[k]||0);
+  totalEl.innerHTML=n?`Total das parcelas: <b>${fmtR(total)}</b>`:'';
+}
+
+function openLoanModal(id){
+  closeAllDD();
+  S.editLoanId=id||null;
+  S.loanCustomMode=false;
+  S.loanCustomRemoved=false;
+  S.loanCustomValues={};
+  $('mlo-title').textContent=id?'Editar Empréstimo':'Novo Empréstimo';
+  if(id){
+    const l=S.loans.find(x=>x.id===id);
+    if(l){
+      $('lo-inp-name').value=l.personName;
+      $('lo-inp-val').value=l.principal;
+      $('lo-inp-rate').value=l.rate||'';
+      $('lo-inp-parcelas').value=l.installments;
+      $('lo-inp-date').value=l.startDate||'';
+      const n=l.installments;
+      const fullCustom=n>0&&Array.from({length:n},(_,i)=>i+1).every(k=>l.overrides&&l.overrides[k]&&l.overrides[k].amount!=null);
+      if(fullCustom){
+        S.loanCustomMode=true;
+        for(let k=1;k<=n;k++)S.loanCustomValues[k]=l.overrides[k].amount;
+      }
+    }
+  }else{
+    $('lo-inp-name').value='';$('lo-inp-val').value='';
+    $('lo-inp-rate').value='';$('lo-inp-parcelas').value='';
+    $('lo-inp-date').value=today();
+  }
+  const wrap=$('lo-custom-wrap'),btn=$('lo-custom-toggle-btn');
+  if(S.loanCustomMode){
+    wrap.style.display='flex';
+    btn.textContent='✖ Remover valores diferentes';
+  }else{
+    wrap.style.display='none';
+    $('lo-custom-list').innerHTML='';
+    $('lo-custom-total').textContent='';
+    btn.textContent='🔀 Parcelas com valores diferentes';
+  }
+  updateLoanPreview();
+  $('mov-loan').classList.add('open');
+  setTimeout(()=>$('lo-inp-name').focus(),50);
+}
+
+async function saveLoan(){
+  const personName=$('lo-inp-name').value.trim();
+  const principal=parseFloat($('lo-inp-val').value);
+  const rate=parseFloat($('lo-inp-rate').value)||0;
+  const installments=parseInt($('lo-inp-parcelas').value);
+  const startDate=$('lo-inp-date').value;
+
+  if(!personName){alert('Informe o nome da pessoa.');$('lo-inp-name').focus();return}
+  if(isNaN(principal)||principal<=0){alert('Informe um valor emprestado válido.');$('lo-inp-val').focus();return}
+  if(!installments||installments<1){alert('Informe o número de parcelas.');$('lo-inp-parcelas').focus();return}
+  if(!startDate){alert('Informe a data da 1ª parcela.');$('lo-inp-date').focus();return}
+
+  let customOverrides=null;
+  if(S.loanCustomMode){
+    customOverrides={};
+    for(let k=1;k<=installments;k++){
+      const v=S.loanCustomValues[k];
+      if(v==null||isNaN(v)||v<=0){
+        alert(`Informe um valor válido para a parcela ${k}.`);
+        return;
+      }
+      customOverrides[k]={amount:v};
+    }
+  }
+
+  if(S.editLoanId){
+    const idx=S.loans.findIndex(x=>x.id===S.editLoanId);
+    if(idx!==-1){
+      const updated={...S.loans[idx],personName,principal,rate,installments,startDate};
+      if(customOverrides)updated.overrides=customOverrides;
+      else if(S.loanCustomRemoved)updated.overrides={};
+      S.loans[idx]=updated;
+      await persistLoan(S.loans[idx]);
+    }
+  }else{
+    const loan={id:uid(),personName,principal,rate,installments,startDate,payments:{},createdAt:today()};
+    if(customOverrides)loan.overrides=customOverrides;
+    S.loans.push(loan);
+    await persistLoan(loan);
+  }
+  closeModal('mov-loan');
+  renderEmprestimos();
+}
+
+async function delLoan(id){
+  if(!confirm('Excluir este empréstimo e todas as suas parcelas?'))return;
+  S.loans=S.loans.filter(l=>l.id!==id);
+  await deleteLoanDoc(id);
+  renderEmprestimos();
+}
+
+async function toggleInstallmentPaid(loanId,index){
+  const idx=S.loans.findIndex(l=>l.id===loanId);
+  if(idx===-1)return;
+  const loan=S.loans[idx];
+  loan.payments=loan.payments||{};
+  loan.payments[index]=!loan.payments[index];
+  await persistLoan(loan);
+  renderEmprestimos();
+}
+
+/* ── Edição individual do valor de UMA parcela específica ─── */
+function openLoanInstModal(loanId,index){
+  closeAllDD();
+  const loan=S.loans.find(l=>l.id===loanId);
+  if(!loan)return;
+  const inst=loanInstallments(loan).find(i=>i.index===Number(index));
+  if(!inst)return;
+  S._editInstLoanId=loanId;
+  S._editInstIndex=Number(index);
+  $('mli-info').textContent=`${loan.personName} — parcela ${inst.index}/${inst.total} (venc. ${fmtD(inst.dueDate)})`;
+  $('lo-inst-val').value=inst.amount.toFixed(2);
+  $('lo-inst-reset-row').style.display=inst.overridden?'':'none';
+  $('mov-loan-inst').classList.add('open');
+  setTimeout(()=>$('lo-inst-val').focus(),50);
+}
+
+async function saveLoanInstValue(){
+  const val=parseFloat($('lo-inst-val').value);
+  if(isNaN(val)||val<=0){alert('Informe um valor válido maior que zero.');$('lo-inst-val').focus();return}
+  const idx=S.loans.findIndex(l=>l.id===S._editInstLoanId);
+  if(idx===-1)return;
+  const loan=S.loans[idx];
+  loan.overrides=loan.overrides||{};
+  loan.overrides[S._editInstIndex]={amount:val};
+  await persistLoan(loan);
+  closeModal('mov-loan-inst');
+  renderEmprestimos();
+}
+
+async function resetLoanInstValue(){
+  const idx=S.loans.findIndex(l=>l.id===S._editInstLoanId);
+  if(idx===-1)return;
+  const loan=S.loans[idx];
+  if(loan.overrides)delete loan.overrides[S._editInstIndex];
+  await persistLoan(loan);
+  closeModal('mov-loan-inst');
+  renderEmprestimos();
+}
+
+/* ── Navegação mês/ano própria do módulo (isolada do financeiro) ── */
+function loSetMonth(m){ S.loSelectedMonth=m; renderEmprestimos(); }
+function loSetYear(y){ S.loSelectedYear=y; renderEmprestimos(); }
+
+function renderLoanMonthBar(){
+  const bar=$('lo-mbar'),yearEl=$('lo-mbar-year');if(!bar)return;
+  if(yearEl){
+    yearEl.innerHTML=`
+      <button class="mbar-year-btn" onclick="loSetYear(${S.loSelectedYear-1})" title="Ano anterior">‹</button>
+      <span class="mbar-year-lbl">${S.loSelectedYear}</span>
+      <button class="mbar-year-btn" onclick="loSetYear(${S.loSelectedYear+1})" title="Próximo ano">›</button>`;
+  }
+  bar.innerHTML=MONTHS.map((name,i)=>`
+    <button class="mchip${i===S.loSelectedMonth?' active':''}"
+      onclick="loSetMonth(${i})"
+      role="tab" aria-selected="${i===S.loSelectedMonth}"
+      aria-label="${name}">${name}</button>`
+  ).join('');
+  setTimeout(()=>{
+    const active=bar.querySelector('.mchip.active');
+    if(active)active.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+  },50);
+}
+
+/* ── Render principal do módulo ──────────────────────────── */
+function renderEmprestimos(){
+  const tbody=$('lo-tbody');
+  if(!tbody)return; // tela ainda não montada
+  renderLoanMonthBar();
+
+  const allInst=S.loans.flatMap(loanInstallments);
+
+  const sgrid=$('lo-sgrid');
+  if(sgrid){
+    const totalEmprestado=S.loans.reduce((s,l)=>s+l.principal,0);
+    const totalRecebido=allInst.filter(i=>i.paid).reduce((s,i)=>s+i.amount,0);
+    const totalAReceber=allInst.filter(i=>!i.paid).reduce((s,i)=>s+i.amount,0);
+    const atrasadas=allInst.filter(i=>loanInstallmentStatus(i)==='overdue').length;
+    sgrid.innerHTML=`
+      <div class="card cb"><div class="mcard-lbl">Total emprestado</div><div class="sval">${fmtR(totalEmprestado)}</div></div>
+      <div class="card cb"><div class="mcard-lbl">Já recebido</div><div class="sval green">${fmtR(totalRecebido)}</div></div>
+      <div class="card cb"><div class="mcard-lbl">A receber</div><div class="sval">${fmtR(totalAReceber)}</div></div>
+      <div class="card cb"><div class="mcard-lbl">Parcelas atrasadas</div><div class="sval ${atrasadas?'red':''}">${atrasadas}</div></div>`;
+  }
+
+  const ym=ymKey(S.loSelectedYear,S.loSelectedMonth);
+  const monthInst=allInst.filter(i=>i.dueDate.slice(0,7)===ym).sort((a,b)=>a.dueDate.localeCompare(b.dueDate));
+
+  const emptyMonth=$('empty-lo-month'),mcardMonth=$('mcard-lo-month');
+  if(!monthInst.length){
+    tbody.innerHTML='';
+    if(mcardMonth)mcardMonth.innerHTML='';
+    emptyMonth.style.display='';
+  }else{
+    emptyMonth.style.display='none';
+    const rows=monthInst.map(i=>{
+      const st=loanInstallmentStatus(i);
+      const badge=st==='paid'?'<span class="sbadge s-paid">✅ Pago</span>':st==='overdue'?'<span class="sbadge s-overdue">🔴 Atrasado</span>':'<span class="sbadge s-pending">🕐 Pendente</span>';
+      const ovBadge=i.overridden?'<span style="font-size:10px;color:var(--yellow);font-weight:600;margin-left:4px" title="Valor alterado manualmente neste mês">✎</span>':'';
+      const payItem=st==='paid'
+        ?`<button class="dditem dditem-undo" data-act="pay-lo" data-id="${i.loanId}" data-idx="${i.index}">↩ Desfazer pagamento</button>`
+        :`<button class="dditem dditem-pay" data-act="pay-lo" data-id="${i.loanId}" data-idx="${i.index}">✅ Marcar como paga</button>`;
+      const ddMenu=`<div class="ddwrap">
+            <button class="ddbtn" data-act="opts-lo" data-id="${i.loanId}" aria-haspopup="true" aria-expanded="false">Opções</button>
+            <div class="ddmenu" role="menu">
+              ${payItem}
+              <button class="dditem dditem-edit" data-act="editval-lo" data-id="${i.loanId}" data-idx="${i.index}">✏️ Editar valor desta parcela</button>
+              <div class="ddsep"></div>
+              <button class="dditem dditem-edit" data-act="edit-lo" data-id="${i.loanId}" role="menuitem">✏️ Editar empréstimo</button>
+              <button class="dditem dditem-del" data-act="del-lo" data-id="${i.loanId}" role="menuitem">🗑️ Excluir empréstimo</button>
+            </div>
+          </div>`;
+      return{i,st,badge,ovBadge,ddMenu};
+    });
+    tbody.innerHTML=rows.map(({i,st,badge,ovBadge,ddMenu})=>`<tr class="${st==='overdue'?'tr-overdue':st==='paid'?'tr-paid':''}">
+        <td><span class="name-badge">${esc(i.personName)}</span></td>
+        <td>${i.index}/${i.total}</td>
+        <td class="amt ${st==='overdue'?'amt-overdue':st==='paid'?'amt-paid':''}">${fmtR(i.amount)}${ovBadge}</td>
+        <td style="color:${st==='overdue'?'var(--red)':st==='paid'?'var(--green)':'var(--muted)'}">${fmtD(i.dueDate)}</td>
+        <td>${badge}</td>
+        <td>${ddMenu}</td>
+      </tr>`).join('');
+    if(mcardMonth){
+      mcardMonth.innerHTML=rows.map(({i,st,badge,ovBadge,ddMenu})=>`
+        <div class="mcard${st==='overdue'?' mc-overdue':st==='paid'?' mc-paid':''}">
+          <div class="mcard-top">
+            <div class="mcard-name">${esc(i.personName)} <span style="color:var(--muted);font-weight:400;font-size:12px">(${i.index}/${i.total})</span></div>
+            ${ddMenu}
+          </div>
+          <div class="mcard-body">
+            <div class="mcard-cell"><span class="mcard-lbl">Valor</span><span class="mcard-val" style="font-weight:600">${fmtR(i.amount)}${ovBadge}</span></div>
+            <div class="mcard-cell"><span class="mcard-lbl">Vencimento</span><span class="mcard-val">${fmtD(i.dueDate)}</span></div>
+            <div class="mcard-cell"><span class="mcard-lbl">Status</span><span class="mcard-val">${badge}</span></div>
+          </div>
+        </div>`).join('');
+    }
+  }
+
+  renderLoansList();
+}
+
+/* Lista geral de empréstimos cadastrados (gestão, não filtrada por mês) */
+function renderLoansList(){
+  const tbody=$('lo-loans-tbody'),empty=$('empty-lo'),mcardList=$('mcard-lo-loans');
+  if(!tbody)return;
+  if(!S.loans.length){
+    tbody.innerHTML='';
+    if(mcardList)mcardList.innerHTML='';
+    empty.style.display='';
+    return;
+  }
+  empty.style.display='none';
+  const rows=S.loans.map(l=>{
+    const inst=loanInstallments(l);
+    const paidCount=inst.filter(i=>i.paid).length;
+    const pct=Math.round((paidCount/l.installments)*100);
+    const pmt=loanInstallmentValue(l.principal,l.rate,l.installments);
+    const ddMenu=`<div class="ddwrap">
+        <button class="ddbtn" data-act="opts-lo2" data-id="${l.id}" aria-haspopup="true" aria-expanded="false">Opções</button>
+        <div class="ddmenu" role="menu">
+          <button class="dditem dditem-edit" data-act="edit-lo" data-id="${l.id}" role="menuitem">✏️ Editar</button>
+          <button class="dditem dditem-del" data-act="del-lo" data-id="${l.id}" role="menuitem">🗑️ Excluir</button>
+        </div>
+      </div>`;
+    return{l,paidCount,pct,pmt,ddMenu};
+  });
+  tbody.innerHTML=rows.map(({l,paidCount,pct,pmt,ddMenu})=>`<tr>
+      <td><span class="name-badge">${esc(l.personName)}</span></td>
+      <td class="amt">${fmtR(l.principal)}</td>
+      <td>${l.rate?l.rate+'% a.m.':'—'}</td>
+      <td>${l.installments}x de ${fmtR(pmt)}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="flex:1;height:6px;background:var(--border);border-radius:4px;overflow:hidden;min-width:60px">
+            <div style="height:100%;width:${pct}%;background:var(--accent)"></div>
+          </div>
+          <span style="font-size:11px;color:var(--muted);white-space:nowrap">${paidCount}/${l.installments}</span>
+        </div>
+      </td>
+      <td>${ddMenu}</td>
+    </tr>`).join('');
+  if(mcardList){
+    mcardList.innerHTML=rows.map(({l,paidCount,pct,pmt,ddMenu})=>`
+      <div class="mcard">
+        <div class="mcard-top">
+          <div class="mcard-name">${esc(l.personName)}</div>
+          ${ddMenu}
+        </div>
+        <div class="mcard-body">
+          <div class="mcard-cell"><span class="mcard-lbl">Valor</span><span class="mcard-val">${fmtR(l.principal)}</span></div>
+          <div class="mcard-cell"><span class="mcard-lbl">Juros</span><span class="mcard-val">${l.rate?l.rate+'% a.m.':'—'}</span></div>
+          <div class="mcard-cell"><span class="mcard-lbl">Parcelas</span><span class="mcard-val">${l.installments}x de ${fmtR(pmt)}</span></div>
+          <div class="mcard-cell"><span class="mcard-lbl">Progresso</span><span class="mcard-val">${paidCount}/${l.installments} (${pct}%)</span></div>
+        </div>
+      </div>`).join('');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
    EVENT DELEGATION — global (captura ddmenu position:fixed)
 ═══════════════════════════════════════════════════════════ */
 function _expAction(e){
@@ -918,13 +1377,25 @@ function _invAction(e){
   if(act==='edit-inv')openInvModal(id);
   else if(act==='del-inv')delInv(id);
 }
+function _loanAction(e){
+  const btn=e.target.closest('[data-act]');if(!btn)return;
+  const{act,id,idx}=btn.dataset;
+  if(act==='opts-lo'||act==='opts-lo2'){openDD(btn);return}
+  closeAllDD();
+  if(act==='pay-lo')toggleInstallmentPaid(id,parseInt(idx));
+  else if(act==='editval-lo')openLoanInstModal(id,idx);
+  else if(act==='edit-lo')openLoanModal(id);
+  else if(act==='del-lo')delLoan(id);
+}
 document.addEventListener('click',e=>{
   const btn=e.target.closest('[data-act]');if(!btn)return;
   const{act}=btn.dataset;
   const expActs=['opts','pay','edit','del'];
   const invActs=['opts-inv','edit-inv','del-inv'];
+  const loanActs=['opts-lo','opts-lo2','pay-lo','editval-lo','edit-lo','del-lo'];
   if(expActs.includes(act))_expAction(e);
   else if(invActs.includes(act))_invAction(e);
+  else if(loanActs.includes(act))_loanAction(e);
 });
 
 /* ═══════════════════════════════════════════════════════════
@@ -1517,6 +1988,10 @@ Object.assign(window, {
   addCat,
   // Meta
   saveMeta,
+  // Empréstimos (módulo independente do financeiro)
+  openLoanModal, saveLoan, updateLoanPreview, loSetMonth, loSetYear,
+  saveLoanInstValue, resetLoanInstValue,
+  toggleLoanCustomValues, updateLoanCustomValue,
   // Dashboard
   setPeriod, setGaugeType,
   // Month bar
