@@ -1,11 +1,17 @@
 /* FinFlow — Service Worker */
-const CACHE = "finflow-v2";
+const CACHE = "finflow-v6";
 const STATIC = [
   "/",
   "/index.html",
   "/finflow.css",
   "/finflow.js",
-  "/manifest.json"
+  "/manifest.json",
+  "/favicon.ico",
+  "/fotos/logo-16.png",
+  "/fotos/logo-32.png",
+  "/fotos/logo-180.png",
+  "/fotos/logo-192.png",
+  "/fotos/logo-512.png"
 ];
 
 // Instalação: faz cache dos arquivos estáticos

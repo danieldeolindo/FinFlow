@@ -54,7 +54,7 @@ const KW={
 };
 const INV_LABELS={rf:'Renda Fixa',rv:'Renda Variável',crypto:'Cripto',other:'Outro'};
 const INV_COLORS={rf:'inv-rf',rv:'inv-rv',crypto:'inv-crypto',other:'inv-other'};
-const CHT_COLORS=['#2d6a4f','#40916c','#52b788','#74c69d','#95d5b2','#1b4332','#d8f3dc','#b7e4c7','#2563eb','#7c3aed','#dc2626','#d97706'];
+const CHT_COLORS=['#8B3DFF','#4A4A4A','#B56CFF','#7A7A7A','#6F2BFF','#A0A0A0','#D9C2FF','#2E2E2E','#C29CFF','#5C5C5C','#4E1D99','#8A8A8A'];
 const MONTHS=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
 /* ═══════════════════════════════════════════════════════════
@@ -939,9 +939,20 @@ function loanInstallmentValue(principal,ratePct,n){
   return principal*i/(1-Math.pow(1+i,-n));
 }
 
+/* Pagamentos parciais de uma parcela: loan.partialPayments[index] é uma
+   lista de {amount,date} lançados aos poucos até quitar o valor total.
+   Independem do flag loan.payments[index] (marcação de "paga" manual). */
+function loanInstPartialList(loan,index){
+  return ((loan.partialPayments||{})[index])||[];
+}
+function loanInstPartialSum(loan,index){
+  return loanInstPartialList(loan,index).reduce((s,p)=>s+p.amount,0);
+}
+
 /* Gera a lista de parcelas (datas + valores) de um empréstimo.
    Cada parcela pode ter o valor sobrescrito individualmente via
-   loan.overrides[index] (editável pelo usuário mês a mês). */
+   loan.overrides[index] (editável pelo usuário mês a mês), e pode
+   ter pagamentos parciais registrados via loan.partialPayments[index]. */
 function loanInstallments(loan){
   const n=loan.installments;
   const pmt=loanInstallmentValue(loan.principal,loan.rate,n);
@@ -950,15 +961,21 @@ function loanInstallments(loan){
   for(let k=0;k<n;k++){
     const d=new Date(start.getFullYear(),start.getMonth()+k,start.getDate());
     const dueDate=d.toISOString().split('T')[0];
-    const paid=!!((loan.payments||{})[k+1]);
-    const ov=(loan.overrides||{})[k+1];
+    const idx=k+1;
+    const legacyPaid=!!((loan.payments||{})[idx]);
+    const ov=(loan.overrides||{})[idx];
     const amount=(ov&&ov.amount!=null)?ov.amount:pmt;
-    list.push({loanId:loan.id,personName:loan.personName,index:k+1,total:n,amount,defaultAmount:pmt,overridden:!!ov,dueDate,paid});
+    const partialSum=loanInstPartialSum(loan,idx);
+    const paidAmount=legacyPaid?amount:Math.min(partialSum,amount);
+    const remaining=Math.max(0,+(amount-paidAmount).toFixed(2));
+    const paid=legacyPaid||remaining<=0.005;
+    list.push({loanId:loan.id,personName:loan.personName,index:idx,total:n,amount,defaultAmount:pmt,overridden:!!ov,dueDate,paid,paidAmount,remaining,hasPartial:!legacyPaid&&partialSum>0&&remaining>0.005});
   }
   return list;
 }
 function loanInstallmentStatus(inst){
   if(inst.paid)return'paid';
+  if(inst.hasPartial)return'partial';
   return inst.dueDate<today()?'overdue':'pending';
 }
 
@@ -1199,6 +1216,86 @@ async function resetLoanInstValue(){
   renderEmprestimos();
 }
 
+/* ── Pagamento parcial de uma parcela específica ─────────────
+   Permite registrar valores pagos aos poucos (ex: R$100 hoje,
+   R$150 semana que vem) até a parcela ficar quitada. Histórico
+   fica em loan.partialPayments[index] = [{amount,date}]. */
+function openLoanPartialModal(loanId,index){
+  closeAllDD();
+  const loan=S.loans.find(l=>l.id===loanId);
+  if(!loan)return;
+  const inst=loanInstallments(loan).find(i=>i.index===Number(index));
+  if(!inst)return;
+  S._editInstLoanId=loanId;
+  S._editInstIndex=Number(index);
+  $('mlp-info').textContent=`${loan.personName} — parcela ${inst.index}/${inst.total} (venc. ${fmtD(inst.dueDate)})`;
+  $('lp-total').textContent=fmtR(inst.amount);
+  $('lp-paid').textContent=fmtR(inst.paidAmount);
+  $('lp-remaining').textContent=fmtR(inst.remaining);
+  $('lp-inp-val').value=inst.remaining>0?inst.remaining.toFixed(2):'';
+  $('lp-inp-date').value=today();
+  renderPartialPaymentsList(loan,inst.index);
+  $('mov-loan-partial').classList.add('open');
+  setTimeout(()=>$('lp-inp-val').focus(),50);
+}
+
+function renderPartialPaymentsList(loan,index){
+  const wrap=$('lp-history');if(!wrap)return;
+  const list=loanInstPartialList(loan,index);
+  if(!list.length){wrap.innerHTML='<div style="font-size:12px;color:var(--muted)">Nenhum pagamento parcial registrado ainda.</div>';return}
+  wrap.innerHTML=list.map((p,i)=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:6px 0;border-bottom:1px solid var(--border)">
+      <span>${fmtD(p.date)} — <b>${fmtR(p.amount)}</b></span>
+      <button type="button" class="btn btn-ghost btn-sm" style="padding:2px 8px" onclick="deletePartialPayment(${i})">🗑️</button>
+    </div>`).join('');
+}
+
+async function savePartialPayment(){
+  const val=parseFloat($('lp-inp-val').value);
+  const date=$('lp-inp-date').value||today();
+  if(isNaN(val)||val<=0){alert('Informe um valor válido maior que zero.');$('lp-inp-val').focus();return}
+  const idx=S.loans.findIndex(l=>l.id===S._editInstLoanId);
+  if(idx===-1)return;
+  const loan=S.loans[idx];
+  const index=S._editInstIndex;
+  loan.partialPayments=loan.partialPayments||{};
+  loan.partialPayments[index]=loan.partialPayments[index]||[];
+  loan.partialPayments[index].push({amount:val,date});
+  // Se o total pago já cobre o valor da parcela, marca como quitada automaticamente
+  const inst=loanInstallments(loan).find(i=>i.index===index);
+  if(inst&&inst.remaining<=0.005){
+    loan.payments=loan.payments||{};
+    loan.payments[index]=true;
+  }
+  await persistLoan(loan);
+  closeModal('mov-loan-partial');
+  renderEmprestimos();
+}
+
+async function deletePartialPayment(i){
+  const idx=S.loans.findIndex(l=>l.id===S._editInstLoanId);
+  if(idx===-1)return;
+  const loan=S.loans[idx];
+  const index=S._editInstIndex;
+  const list=loanInstPartialList(loan,index);
+  if(!list[i])return;
+  if(!confirm('Excluir este pagamento parcial?'))return;
+  list.splice(i,1);
+  loan.partialPayments=loan.partialPayments||{};
+  loan.partialPayments[index]=list;
+  // Se a parcela estava marcada como paga (legado ou por soma) e o pagamento
+  // removido faz o total ficar abaixo do valor da parcela, desmarca.
+  if(loan.payments&&loan.payments[index]){
+    const inst=loanInstallments({...loan,payments:{}}).find(i2=>i2.index===index);
+    if(inst&&inst.remaining>0.005)delete loan.payments[index];
+  }
+  await persistLoan(loan);
+  $('lp-paid').textContent=fmtR(loanInstPartialSum(loan,index));
+  $('lp-remaining').textContent=fmtR(loanInstallments(loan).find(i2=>i2.index===index).remaining);
+  renderPartialPaymentsList(loan,index);
+  renderEmprestimos();
+}
+
 /* ── Navegação mês/ano própria do módulo (isolada do financeiro) ── */
 function loSetMonth(m){ S.loSelectedMonth=m; renderEmprestimos(); }
 function loSetYear(y){ S.loSelectedYear=y; renderEmprestimos(); }
@@ -1234,8 +1331,8 @@ function renderEmprestimos(){
   const sgrid=$('lo-sgrid');
   if(sgrid){
     const totalEmprestado=S.loans.reduce((s,l)=>s+l.principal,0);
-    const totalRecebido=allInst.filter(i=>i.paid).reduce((s,i)=>s+i.amount,0);
-    const totalAReceber=allInst.filter(i=>!i.paid).reduce((s,i)=>s+i.amount,0);
+    const totalRecebido=allInst.reduce((s,i)=>s+i.paidAmount,0);
+    const totalAReceber=allInst.reduce((s,i)=>s+i.remaining,0);
     const atrasadas=allInst.filter(i=>loanInstallmentStatus(i)==='overdue').length;
     sgrid.innerHTML=`
       <div class="card cb"><div class="mcard-lbl">Total emprestado</div><div class="sval">${fmtR(totalEmprestado)}</div></div>
@@ -1256,40 +1353,43 @@ function renderEmprestimos(){
     emptyMonth.style.display='none';
     const rows=monthInst.map(i=>{
       const st=loanInstallmentStatus(i);
-      const badge=st==='paid'?'<span class="sbadge s-paid">✅ Pago</span>':st==='overdue'?'<span class="sbadge s-overdue">🔴 Atrasado</span>':'<span class="sbadge s-pending">🕐 Pendente</span>';
+      const badge=st==='paid'?'<span class="sbadge s-paid">✅ Pago</span>':st==='partial'?'<span class="sbadge s-partial">🔷 Parcial</span>':st==='overdue'?'<span class="sbadge s-overdue">🔴 Atrasado</span>':'<span class="sbadge s-pending">🕐 Pendente</span>';
       const ovBadge=i.overridden?'<span style="font-size:10px;color:var(--yellow);font-weight:600;margin-left:4px" title="Valor alterado manualmente neste mês">✎</span>':'';
+      const partialInfo=st==='partial'?`<div style="font-size:10.5px;color:var(--blue);margin-top:2px">pago ${fmtR(i.paidAmount)} • falta ${fmtR(i.remaining)}</div>`:'';
       const payItem=st==='paid'
         ?`<button class="dditem dditem-undo" data-act="pay-lo" data-id="${i.loanId}" data-idx="${i.index}">↩ Desfazer pagamento</button>`
         :`<button class="dditem dditem-pay" data-act="pay-lo" data-id="${i.loanId}" data-idx="${i.index}">✅ Marcar como paga</button>`;
+      const partialItem=st==='paid'?'':`<button class="dditem" data-act="partial-lo" data-id="${i.loanId}" data-idx="${i.index}">💰 Pagamento parcial</button>`;
       const ddMenu=`<div class="ddwrap">
             <button class="ddbtn" data-act="opts-lo" data-id="${i.loanId}" aria-haspopup="true" aria-expanded="false">Opções</button>
             <div class="ddmenu" role="menu">
               ${payItem}
+              ${partialItem}
               <button class="dditem dditem-edit" data-act="editval-lo" data-id="${i.loanId}" data-idx="${i.index}">✏️ Editar valor desta parcela</button>
               <div class="ddsep"></div>
               <button class="dditem dditem-edit" data-act="edit-lo" data-id="${i.loanId}" role="menuitem">✏️ Editar empréstimo</button>
               <button class="dditem dditem-del" data-act="del-lo" data-id="${i.loanId}" role="menuitem">🗑️ Excluir empréstimo</button>
             </div>
           </div>`;
-      return{i,st,badge,ovBadge,ddMenu};
+      return{i,st,badge,ovBadge,partialInfo,ddMenu};
     });
-    tbody.innerHTML=rows.map(({i,st,badge,ovBadge,ddMenu})=>`<tr class="${st==='overdue'?'tr-overdue':st==='paid'?'tr-paid':''}">
+    tbody.innerHTML=rows.map(({i,st,badge,ovBadge,partialInfo,ddMenu})=>`<tr class="${st==='overdue'?'tr-overdue':st==='paid'?'tr-paid':st==='partial'?'tr-partial':''}">
         <td><span class="name-badge">${esc(i.personName)}</span></td>
         <td>${i.index}/${i.total}</td>
-        <td class="amt ${st==='overdue'?'amt-overdue':st==='paid'?'amt-paid':''}">${fmtR(i.amount)}${ovBadge}</td>
+        <td class="amt ${st==='overdue'?'amt-overdue':st==='paid'?'amt-paid':''}">${fmtR(i.amount)}${ovBadge}${partialInfo}</td>
         <td style="color:${st==='overdue'?'var(--red)':st==='paid'?'var(--green)':'var(--muted)'}">${fmtD(i.dueDate)}</td>
         <td>${badge}</td>
         <td>${ddMenu}</td>
       </tr>`).join('');
     if(mcardMonth){
-      mcardMonth.innerHTML=rows.map(({i,st,badge,ovBadge,ddMenu})=>`
-        <div class="mcard${st==='overdue'?' mc-overdue':st==='paid'?' mc-paid':''}">
+      mcardMonth.innerHTML=rows.map(({i,st,badge,ovBadge,partialInfo,ddMenu})=>`
+        <div class="mcard${st==='overdue'?' mc-overdue':st==='paid'?' mc-paid':st==='partial'?' mc-partial':''}">
           <div class="mcard-top">
             <div class="mcard-name">${esc(i.personName)} <span style="color:var(--muted);font-weight:400;font-size:12px">(${i.index}/${i.total})</span></div>
             ${ddMenu}
           </div>
           <div class="mcard-body">
-            <div class="mcard-cell"><span class="mcard-lbl">Valor</span><span class="mcard-val" style="font-weight:600">${fmtR(i.amount)}${ovBadge}</span></div>
+            <div class="mcard-cell"><span class="mcard-lbl">Valor</span><span class="mcard-val" style="font-weight:600">${fmtR(i.amount)}${ovBadge}${partialInfo}</span></div>
             <div class="mcard-cell"><span class="mcard-lbl">Vencimento</span><span class="mcard-val">${fmtD(i.dueDate)}</span></div>
             <div class="mcard-cell"><span class="mcard-lbl">Status</span><span class="mcard-val">${badge}</span></div>
           </div>
@@ -1383,6 +1483,7 @@ function _loanAction(e){
   if(act==='opts-lo'||act==='opts-lo2'){openDD(btn);return}
   closeAllDD();
   if(act==='pay-lo')toggleInstallmentPaid(id,parseInt(idx));
+  else if(act==='partial-lo')openLoanPartialModal(id,idx);
   else if(act==='editval-lo')openLoanInstModal(id,idx);
   else if(act==='edit-lo')openLoanModal(id);
   else if(act==='del-lo')delLoan(id);
@@ -1392,7 +1493,7 @@ document.addEventListener('click',e=>{
   const{act}=btn.dataset;
   const expActs=['opts','pay','edit','del'];
   const invActs=['opts-inv','edit-inv','del-inv'];
-  const loanActs=['opts-lo','opts-lo2','pay-lo','editval-lo','edit-lo','del-lo'];
+  const loanActs=['opts-lo','opts-lo2','pay-lo','partial-lo','editval-lo','edit-lo','del-lo'];
   if(expActs.includes(act))_expAction(e);
   else if(invActs.includes(act))_invAction(e);
   else if(loanActs.includes(act))_loanAction(e);
@@ -1665,7 +1766,7 @@ function renderLineChart(){
   if(charts.line)charts.line.destroy();
   charts.line=new Chart(c,{
     type:'line',
-    data:{labels:months.map(m=>m.label),datasets:[{label:'Total',data,fill:true,borderColor:'#2d6a4f',backgroundColor:'rgba(45,106,79,.12)',tension:.4,pointRadius:4}]},
+    data:{labels:months.map(m=>m.label),datasets:[{label:'Total',data,fill:true,borderColor:'#8B3DFF',backgroundColor:'rgba(139,61,255,.15)',tension:.4,pointRadius:4}]},
     options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{display:false}},scales:{x:{ticks:{color:tclr()}},y:{ticks:{color:tclr(),callback:v=>fmtR(v)},grid:{color:gclr()}}}}
   });
 }
@@ -1702,7 +1803,7 @@ function renderCompChart(){
   if(charts.comp)charts.comp.destroy();
   charts.comp=new Chart(c,{
     type:'bar',
-    data:{labels:[`${mLabel}: Gastos`,`${mLabel}: Investimentos`],datasets:[{data:[me,mi],backgroundColor:['#dc2626','#2563eb']}]},
+    data:{labels:[`${mLabel}: Gastos`,`${mLabel}: Investimentos`],datasets:[{data:[me,mi],backgroundColor:['#E5484D','#8B3DFF']}]},
     options:{responsive:true,maintainAspectRatio:true,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{ticks:{color:tclr(),callback:v=>fmtR(v)},grid:{color:gclr()}},y:{ticks:{color:tclr()}}}}
   });
 }
@@ -1712,7 +1813,7 @@ function renderGauge(all){
   const spent=all.filter(e=>status(e,e._ym)==='paid').reduce((s,e)=>s+e.amount,0);
   const pct=Math.min((spent/S.salary)*100,100);
   const sc=pct>=80?'crit':pct>=50?'warn':'ok';
-  const scColor=pct>=80?'#dc2626':pct>=50?'#d97706':'#16a34a';
+  const scColor=pct>=80?'#E5484D':pct>=50?'#E8A400':'#1AA363';
   $('gaugePieWrap').style.display='none';
   if(S.gaugeType==='ring'){
     $('gaugeContent').innerHTML=`
@@ -1849,7 +1950,7 @@ function renderScore(){
   $('scoreNum').textContent=score;$('scoreLbl').textContent=lbl;
   const c=$('scoreCircle');
   c.style.strokeDashoffset=264-(score/100)*264;
-  c.style.stroke=score>=80?'#16A34A':score>=60?'#d97706':'#DC2626';
+  c.style.stroke=score>=80?'#1AA363':score>=60?'#E8A400':'#E5484D';
   $('scoreComp').innerHTML=[
     {l:'Controle de meta',v:gScore},
     {l:'Gastos supérfluos',v:lScore},
