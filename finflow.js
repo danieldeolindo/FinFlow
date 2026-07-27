@@ -274,6 +274,7 @@ const $$=sel=>document.querySelectorAll(sel);
 const fmtR=v=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
 const fmtD=d=>{if(!d)return'—';const[y,m,dy]=d.split('-');return`${dy}/${m}/${y}`};
 const today=()=>new Date().toISOString().split('T')[0];
+const addDays=(dateStr,days)=>{const d=new Date(dateStr+'T00:00:00');d.setDate(d.getDate()+days);return d.toISOString().split('T')[0]};
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2);
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 /* ── INSTÂNCIA MENSAL ─────────────────────────────────── */
@@ -965,11 +966,12 @@ function loanInstallments(loan){
     const legacyPaid=!!((loan.payments||{})[idx]);
     const ov=(loan.overrides||{})[idx];
     const amount=(ov&&ov.amount!=null)?ov.amount:pmt;
+    const finalDueDate=(ov&&ov.dueDate)?ov.dueDate:dueDate;
     const partialSum=loanInstPartialSum(loan,idx);
     const paidAmount=legacyPaid?amount:Math.min(partialSum,amount);
     const remaining=Math.max(0,+(amount-paidAmount).toFixed(2));
     const paid=legacyPaid||remaining<=0.005;
-    list.push({loanId:loan.id,personName:loan.personName,index:idx,total:n,amount,defaultAmount:pmt,overridden:!!ov,dueDate,paid,paidAmount,remaining,hasPartial:!legacyPaid&&partialSum>0&&remaining>0.005});
+    list.push({loanId:loan.id,personName:loan.personName,index:idx,total:n,amount,defaultAmount:pmt,overridden:!!ov,dueDate:finalDueDate,originalDueDate:dueDate,rescheduled:!!(ov&&ov.dueDate),paid,paidAmount,remaining,hasPartial:!legacyPaid&&partialSum>0&&remaining>0.005});
   }
   return list;
 }
@@ -1200,7 +1202,7 @@ async function saveLoanInstValue(){
   if(idx===-1)return;
   const loan=S.loans[idx];
   loan.overrides=loan.overrides||{};
-  loan.overrides[S._editInstIndex]={amount:val};
+  loan.overrides[S._editInstIndex]={...(loan.overrides[S._editInstIndex]||{}),amount:val};
   await persistLoan(loan);
   closeModal('mov-loan-inst');
   renderEmprestimos();
@@ -1266,6 +1268,12 @@ async function savePartialPayment(){
   if(inst&&inst.remaining<=0.005){
     loan.payments=loan.payments||{};
     loan.payments[index]=true;
+  }else{
+    // Ainda falta pagar: gera uma nova cobrança do valor restante para
+    // daqui 10 dias (a partir da data do pagamento parcial registrado),
+    // reprogramando o vencimento da parcela sem mexer no valor dela.
+    loan.overrides=loan.overrides||{};
+    loan.overrides[index]={...(loan.overrides[index]||{}),dueDate:addDays(date,10)};
   }
   await persistLoan(loan);
   closeModal('mov-loan-partial');
@@ -1356,6 +1364,7 @@ function renderEmprestimos(){
       const badge=st==='paid'?'<span class="sbadge s-paid">✅ Pago</span>':st==='partial'?'<span class="sbadge s-partial">🔷 Parcial</span>':st==='overdue'?'<span class="sbadge s-overdue">🔴 Atrasado</span>':'<span class="sbadge s-pending">🕐 Pendente</span>';
       const ovBadge=i.overridden?'<span style="font-size:10px;color:var(--yellow);font-weight:600;margin-left:4px" title="Valor alterado manualmente neste mês">✎</span>':'';
       const partialInfo=st==='partial'?`<div style="font-size:10.5px;color:var(--blue);margin-top:2px">pago ${fmtR(i.paidAmount)} • falta ${fmtR(i.remaining)}</div>`:'';
+      const rescheduleInfo=(i.rescheduled&&!i.paid)?`<div style="font-size:10.5px;color:var(--yellow);margin-top:2px" title="Vencimento original: ${fmtD(i.originalDueDate)}">🔁 nova cobrança</div>`:'';
       const payItem=st==='paid'
         ?`<button class="dditem dditem-undo" data-act="pay-lo" data-id="${i.loanId}" data-idx="${i.index}">↩ Desfazer pagamento</button>`
         :`<button class="dditem dditem-pay" data-act="pay-lo" data-id="${i.loanId}" data-idx="${i.index}">✅ Marcar como paga</button>`;
@@ -1371,18 +1380,18 @@ function renderEmprestimos(){
               <button class="dditem dditem-del" data-act="del-lo" data-id="${i.loanId}" role="menuitem">🗑️ Excluir empréstimo</button>
             </div>
           </div>`;
-      return{i,st,badge,ovBadge,partialInfo,ddMenu};
+      return{i,st,badge,ovBadge,partialInfo,rescheduleInfo,ddMenu};
     });
-    tbody.innerHTML=rows.map(({i,st,badge,ovBadge,partialInfo,ddMenu})=>`<tr class="${st==='overdue'?'tr-overdue':st==='paid'?'tr-paid':st==='partial'?'tr-partial':''}">
+    tbody.innerHTML=rows.map(({i,st,badge,ovBadge,partialInfo,rescheduleInfo,ddMenu})=>`<tr class="${st==='overdue'?'tr-overdue':st==='paid'?'tr-paid':st==='partial'?'tr-partial':''}">
         <td><span class="name-badge">${esc(i.personName)}</span></td>
         <td>${i.index}/${i.total}</td>
         <td class="amt ${st==='overdue'?'amt-overdue':st==='paid'?'amt-paid':''}">${fmtR(i.amount)}${ovBadge}${partialInfo}</td>
-        <td style="color:${st==='overdue'?'var(--red)':st==='paid'?'var(--green)':'var(--muted)'}">${fmtD(i.dueDate)}</td>
+        <td style="color:${st==='overdue'?'var(--red)':st==='paid'?'var(--green)':'var(--muted)'}">${fmtD(i.dueDate)}${rescheduleInfo}</td>
         <td>${badge}</td>
         <td>${ddMenu}</td>
       </tr>`).join('');
     if(mcardMonth){
-      mcardMonth.innerHTML=rows.map(({i,st,badge,ovBadge,partialInfo,ddMenu})=>`
+      mcardMonth.innerHTML=rows.map(({i,st,badge,ovBadge,partialInfo,rescheduleInfo,ddMenu})=>`
         <div class="mcard${st==='overdue'?' mc-overdue':st==='paid'?' mc-paid':st==='partial'?' mc-partial':''}">
           <div class="mcard-top">
             <div class="mcard-name">${esc(i.personName)} <span style="color:var(--muted);font-weight:400;font-size:12px">(${i.index}/${i.total})</span></div>
@@ -1390,7 +1399,7 @@ function renderEmprestimos(){
           </div>
           <div class="mcard-body">
             <div class="mcard-cell"><span class="mcard-lbl">Valor</span><span class="mcard-val" style="font-weight:600">${fmtR(i.amount)}${ovBadge}${partialInfo}</span></div>
-            <div class="mcard-cell"><span class="mcard-lbl">Vencimento</span><span class="mcard-val">${fmtD(i.dueDate)}</span></div>
+            <div class="mcard-cell"><span class="mcard-lbl">Vencimento</span><span class="mcard-val">${fmtD(i.dueDate)}${rescheduleInfo}</span></div>
             <div class="mcard-cell"><span class="mcard-lbl">Status</span><span class="mcard-val">${badge}</span></div>
           </div>
         </div>`).join('');
@@ -2093,6 +2102,7 @@ Object.assign(window, {
   openLoanModal, saveLoan, updateLoanPreview, loSetMonth, loSetYear,
   saveLoanInstValue, resetLoanInstValue,
   toggleLoanCustomValues, updateLoanCustomValue,
+  savePartialPayment, deletePartialPayment, openLoanPartialModal,
   // Dashboard
   setPeriod, setGaugeType,
   // Month bar
